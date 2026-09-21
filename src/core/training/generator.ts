@@ -14,6 +14,12 @@
  *      octaves. Any order, no hurry.
  *   8. The same, but both notes pressed together.
  *   9. Key signatures up to four sharps or flats.
+ *  10. Triads in one hand, root position, pressed together — back to keys
+ *      of up to two sharps or flats, so the new shape is the only new thing.
+ *  11. Triads in first and second inversion as well.
+ *  12. Both hands at once: a melody note over a bass note on every beat.
+ *  13. A triad in the right hand over a bass note, in keys up to four
+ *      sharps or flats.
  *
  * Notes move mostly by step, with the occasional small leap, the way a
  * melody does. That is deliberate: reading real music is reading intervals
@@ -52,6 +58,13 @@ export interface Level {
    * window. Otherwise they may come in any order, as slowly as you like.
    */
   readonly together?: boolean;
+  /** Three notes at a time in one hand: root position only, or any inversion. */
+  readonly triads?: 'root' | 'all';
+  /**
+   * Both hands on every beat: the right hand plays a note (or, with
+   * `triads`, a chord) and the left hand a single bass note under it.
+   */
+  readonly bothHands?: boolean;
 }
 
 const d = (step: Step, octave: number): number => octave * 7 + STEPS.indexOf(step);
@@ -62,6 +75,10 @@ const BASS_STAFF: Range = [d('G', 2), d('A', 3)];
 // Two ledger lines beyond each end: treble A3–C6, bass C2–E4.
 const TREBLE_LEDGERS: Range = [d('A', 3), d('C', 6)];
 const BASS_LEDGERS: Range = [d('C', 2), d('E', 4)];
+// Both hands at once: the hands meet at middle C but never cross, which
+// would put the melody under the bass.
+const RIGHT_HAND: Range = [d('C', 4), d('C', 6)];
+const LEFT_HAND: Range = [d('C', 2), d('B', 3)];
 
 export const LEVELS: readonly Level[] = [
   {
@@ -152,7 +169,59 @@ export const LEVELS: readonly Level[] = [
     intervals: true,
     together: true,
   },
+  // The chord levels leave accidentals out: an altered note in a triad
+  // changes the chord, which is a harmony lesson rather than a reading one.
+  {
+    id: 10,
+    name: 'Triads',
+    description: 'Three-note chords in one hand, root position, pressed together.',
+    clefs: ['treble', 'bass'],
+    range: { treble: TREBLE_LEDGERS, bass: BASS_LEDGERS },
+    keys: [-2, -1, 0, 1, 2],
+    chromaticChance: 0,
+    together: true,
+    triads: 'root',
+  },
+  {
+    id: 11,
+    name: 'Inversions',
+    description: 'Triads in root position and both inversions, pressed together.',
+    clefs: ['treble', 'bass'],
+    range: { treble: TREBLE_LEDGERS, bass: BASS_LEDGERS },
+    keys: [-2, -1, 0, 1, 2],
+    chromaticChance: 0,
+    together: true,
+    triads: 'all',
+  },
+  {
+    id: 12,
+    name: 'Both hands',
+    description: 'A note in each hand on every beat, pressed together.',
+    clefs: ['treble', 'bass'],
+    range: { treble: RIGHT_HAND, bass: LEFT_HAND },
+    keys: [-2, -1, 0, 1, 2],
+    chromaticChance: 0,
+    together: true,
+    bothHands: true,
+  },
+  {
+    id: 13,
+    name: 'Both hands, chords',
+    description: 'A triad in the right hand over a bass note, in keys up to four sharps or flats.',
+    clefs: ['treble', 'bass'],
+    range: { treble: RIGHT_HAND, bass: LEFT_HAND },
+    keys: [-4, -3, -2, -1, 0, 1, 2, 3, 4],
+    chromaticChance: 0,
+    together: true,
+    bothHands: true,
+    triads: 'all',
+  },
 ];
+
+/** More than one note on a beat, at this level. */
+export function isChordLevel(level: Level): boolean {
+  return Boolean(level.intervals || level.triads || level.bothHands);
+}
 
 export function levelById(id: number): Level {
   return LEVELS.find((l) => l.id === id) ?? LEVELS[0]!;
@@ -260,6 +329,18 @@ const INTERVAL_SIZES: readonly (readonly [size: number, weight: number])[] = [
   [3, 0.1],
 ];
 
+/**
+ * Triad shapes as scale steps up from the lowest note: root position is
+ * two stacked thirds; first inversion puts the root on top (a third, then a
+ * fourth); second inversion puts the fifth at the bottom (a fourth, then a
+ * third).
+ */
+const TRIAD_SHAPES: readonly (readonly [number, number, number])[] = [
+  [0, 2, 4],
+  [0, 2, 5],
+  [0, 3, 5],
+];
+
 function pickIntervalSize(random: () => number, fits: (size: number) => boolean): number {
   const options = INTERVAL_SIZES.filter(([size]) => fits(size));
   const total = options.reduce((sum, [, w]) => sum + w, 0);
@@ -335,71 +416,104 @@ export function generateExercise({
   // The interval tends to stay the same from beat to beat — parallel
   // thirds or sixths, the way two-note passages are actually written.
   let size = 0;
+  // Likewise a chord's shape: runs of one inversion, not a new one each beat.
+  const shapeOf: Partial<Record<TrainingClef, number>> = {};
+
+  /** What the hand on `hand` plays on this beat, as sorted staff positions. */
+  const kindFor = (hand: TrainingClef): 'single' | 'interval' | 'triad' => {
+    // With both hands, the left hand is the bass line: one note.
+    if (level.bothHands && hand === 'bass') return 'single';
+    if (level.triads) return 'triad';
+    return level.intervals ? 'interval' : 'single';
+  };
+  /** How far the chord reaches beyond the walking note, at most. */
+  const reach = (kind: 'single' | 'interval' | 'triad') =>
+    kind === 'interval' ? 2 : kind === 'triad' ? (level.triads === 'root' ? 4 : 5) : 0;
 
   for (let measure = 1; measure <= bars; measure++) {
     // With two staves, the hand changes at a barline: half the time, but
-    // never three bars running in the same hand.
-    if (level.clefs.length > 1 && measure > 1) {
+    // never three bars running in the same hand. (Unless both hands play
+    // all the time, when there is nothing to change.)
+    if (level.clefs.length > 1 && measure > 1 && !level.bothHands) {
       const lastTwo = draft.filter((n) => n.measure >= measure - 2).map((n) => n.clef);
       const stuck = measure > 2 && lastTwo.every((c) => c === clef);
       if (stuck || random() < 0.5) clef = clef === 'treble' ? 'bass' : 'treble';
     }
-    // With intervals, the melody keeps a third clear of the far edge, so
-    // there is always room for the second note inside the range.
-    const full = level.range[clef]!;
-    const range: Range = !level.intervals
-      ? full
-      : clef === 'treble'
-        ? [full[0] + 2, full[1]]
-        : [full[0], full[1] - 2];
+    const hands: readonly TrainingClef[] = level.bothHands ? ['treble', 'bass'] : [clef];
 
     for (let beat = 0; beat < beatsPerBar; beat++) {
-      const isFirst = draft.length === 0 || draft[draft.length - 1]!.clef !== clef;
-      const current = position[clef]!;
-      const next = isFirst ? current : nextPosition(current, range, random);
-      position[clef] = next;
+      for (const hand of hands) {
+        const kind = kindFor(hand);
+        // The melody keeps clear of the far edge by the chord's reach, so
+        // there is always room for the other notes inside the range.
+        const full = level.range[hand]!;
+        const range: Range =
+          hand === 'treble' ? [full[0] + reach(kind), full[1]] : [full[0], full[1] - reach(kind)];
 
-      // The walking note is the melody: the top of an interval in the
-      // right hand, the bottom in the left. The other note is added below
-      // or above it, sized to stay inside the level's range.
-      const positions = [next];
-      if (level.intervals) {
-        const below = clef === 'treble';
-        const fits = (n: number) => (below ? next - n >= full[0] : next + n <= full[1]);
-        if (size === 0 || !fits(size) || random() < 0.45) size = pickIntervalSize(random, fits);
-        positions.push(below ? next - size : next + size);
-        positions.sort((a, b) => a - b);
-      }
+        const isFirst = level.bothHands
+          ? event === 0
+          : draft.length === 0 || draft[draft.length - 1]!.clef !== hand;
+        const current = position[hand]!;
+        const next = isFirst ? current : nextPosition(current, range, random);
+        position[hand] = next;
 
-      // At most one note of a beat is taken out of the key — two chromatic
-      // notes in one interval is a harmony lesson, not a reading one. An
-      // octave moves as a pair, since C with C♯ above it is not an octave.
-      const chromatic = level.chromaticChance > 0 && random() < level.chromaticChance;
-      let shift: Alter | null = null;
-      for (const at of positions) {
-        const octave = Math.floor(at / 7);
-        const step = STEPS[((at % 7) + 7) % 7]!;
-        let alter: Alter = key[step];
-        const isMelody = at === next;
-        const isOctave = positions.length === 2 && positions[1]! - positions[0]! === 7;
-        if (chromatic && (isMelody || isOctave)) {
-          if (shift === null) {
-            const choices = ([-1, 0, 1] as const).filter((a) => a !== alter);
-            shift = choices[Math.floor(random() * choices.length)]!;
+        // The walking note is the melody: the top of a chord in the right
+        // hand, the bottom in the left. The other notes are added below or
+        // above it, sized to stay inside the level's range.
+        const below = hand === 'treble';
+        const positions = [next];
+        if (kind === 'interval') {
+          const fits = (n: number) => (below ? next - n >= full[0] : next + n <= full[1]);
+          if (size === 0 || !fits(size) || random() < 0.45) size = pickIntervalSize(random, fits);
+          positions.push(below ? next - size : next + size);
+          positions.sort((a, b) => a - b);
+        } else if (kind === 'triad') {
+          const choices = level.triads === 'root' ? [0] : [0, 1, 2];
+          const fits = (i: number) => {
+            const span = TRIAD_SHAPES[i]![2];
+            return below ? next - span >= full[0] : next + span <= full[1];
+          };
+          let shape = shapeOf[hand];
+          if (shape === undefined || !fits(shape) || (choices.length > 1 && random() < 0.4)) {
+            const fitting = choices.filter(fits);
+            shape = fitting[Math.floor(random() * fitting.length)] ?? 0;
           }
-          alter = shift;
+          shapeOf[hand] = shape;
+          const offsets = TRIAD_SHAPES[shape]!;
+          const bottom = below ? next - offsets[2] : next;
+          positions.splice(0, 1, ...offsets.map((o) => bottom + o));
         }
-        draft.push({
-          staff: clef === 'treble' ? 1 : 2,
-          clef,
-          step,
-          octave,
-          alter,
-          midi: midiOf(step, octave, alter),
-          measure,
-          beat,
-          event,
-        });
+
+        // At most one note of a beat is taken out of the key — two chromatic
+        // notes in one interval is a harmony lesson, not a reading one. An
+        // octave moves as a pair, since C with C♯ above it is not an octave.
+        const chromatic = level.chromaticChance > 0 && random() < level.chromaticChance;
+        let shift: Alter | null = null;
+        for (const at of positions) {
+          const octave = Math.floor(at / 7);
+          const step = STEPS[((at % 7) + 7) % 7]!;
+          let alter: Alter = key[step];
+          const isMelody = at === next;
+          const isOctave = positions.length === 2 && positions[1]! - positions[0]! === 7;
+          if (chromatic && (isMelody || isOctave)) {
+            if (shift === null) {
+              const choices = ([-1, 0, 1] as const).filter((a) => a !== alter);
+              shift = choices[Math.floor(random() * choices.length)]!;
+            }
+            alter = shift;
+          }
+          draft.push({
+            staff: hand === 'treble' ? 1 : 2,
+            clef: hand,
+            step,
+            octave,
+            alter,
+            midi: midiOf(step, octave, alter),
+            measure,
+            beat,
+            event,
+          });
+        }
       }
       event++;
     }

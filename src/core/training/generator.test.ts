@@ -152,7 +152,7 @@ describe('generated exercises', () => {
   });
 
   it('from level 6 up, notes follow the key unless they carry an accidental', () => {
-    for (const ex of [6, 7, 8, 9].flatMap(all)) {
+    for (const ex of [6, 7, 8, 9, 10, 11, 12, 13].flatMap(all)) {
       const key = keyAlterations(ex.fifths);
       // Replay the bar-by-bar reading a pianist would do and check that it
       // lands on the pitch that sounds.
@@ -273,6 +273,120 @@ describe('interval levels', () => {
       for (let m = 2; m < byBar.length; m++) {
         assert.ok(!(byBar[m] === byBar[m - 1] && byBar[m] === byBar[m - 2]));
       }
+    }
+  });
+});
+
+describe('chord and both-hands levels', () => {
+  const byEvent = (ex: Exercise) =>
+    Array.from({ length: ex.events }, (_, e) => ex.notes.filter((n) => n.event === e));
+  const steps = (notes: readonly { step: (typeof STEPS)[number]; octave: number }[]) =>
+    notes.map((n) => index(n.step, n.octave)).sort((a, b) => a - b);
+  const shapeOf = (notes: Parameters<typeof steps>[0]) => {
+    const [a, b, c] = steps(notes);
+    return [b! - a!, c! - a!].join(',');
+  };
+
+  it('level 10 plays root-position triads in one hand', () => {
+    for (const ex of all(10)) {
+      assert.equal(ex.events, 16);
+      for (const chord of byEvent(ex)) {
+        assert.equal(chord.length, 3);
+        assert.equal(new Set(chord.map((n) => n.staff)).size, 1);
+        assert.equal(shapeOf(chord), '2,4');
+      }
+    }
+  });
+
+  it('level 11 adds both inversions, and uses all three shapes', () => {
+    const seen = new Set<string>();
+    for (const ex of all(11)) {
+      for (const chord of byEvent(ex)) {
+        assert.equal(chord.length, 3);
+        seen.add(shapeOf(chord));
+      }
+    }
+    assert.deepEqual([...seen].sort(), ['2,4', '2,5', '3,5']);
+  });
+
+  it('level 12 has one note in each hand on every beat, the hands never crossing', () => {
+    for (const ex of all(12)) {
+      for (const beat of byEvent(ex)) {
+        assert.deepEqual(beat.map((n) => n.staff).sort(), [1, 2]);
+        const right = beat.find((n) => n.staff === 1)!;
+        const left = beat.find((n) => n.staff === 2)!;
+        assert.ok(right.midi > left.midi);
+      }
+    }
+  });
+
+  it('level 13 has a triad in the right hand over one bass note', () => {
+    for (const ex of all(13)) {
+      for (const beat of byEvent(ex)) {
+        const right = beat.filter((n) => n.staff === 1);
+        const left = beat.filter((n) => n.staff === 2);
+        assert.equal(right.length, 3);
+        assert.equal(left.length, 1);
+        assert.ok(['2,4', '2,5', '3,5'].includes(shapeOf(right)));
+        assert.ok(Math.min(...right.map((n) => n.midi)) > left[0]!.midi);
+      }
+    }
+  });
+
+  it('keeps the chord levels in the key, with no accidentals written', () => {
+    for (const ex of [10, 11, 12, 13].flatMap(all)) {
+      const key = keyAlterations(ex.fifths);
+      for (const n of ex.notes) {
+        assert.equal(n.alter, key[n.step]);
+        assert.equal(n.accidental, null);
+      }
+    }
+  });
+
+  it('starts the new skills in keys up to two sharps or flats and widens to four at the top', () => {
+    for (const level of [10, 11, 12]) assert.ok(all(level).every((ex) => Math.abs(ex.fifths) <= 2));
+    assert.deepEqual(
+      [...new Set(all(13).map((ex) => ex.fifths))].sort((a, b) => a - b),
+      [-4, -3, -2, -1, 0, 1, 2, 3, 4],
+    );
+  });
+
+  it('asks for every chord level to be pressed together', () => {
+    for (const id of [10, 11, 12, 13]) assert.equal(LEVELS.find((l) => l.id === id)!.together, true);
+  });
+
+  it('moves the melody mostly by step, with no leap wider than a fifth', () => {
+    for (const level of [10, 11, 13]) {
+      let near = 0;
+      let moves = 0;
+      for (const ex of all(level)) {
+        const beats = byEvent(ex);
+        for (let e = 1; e < beats.length; e++) {
+          const top = (b: typeof beats[number]) => {
+            const right = b.filter((n) => n.staff === 1);
+            const hand = right.length ? right : b;
+            // Top of a right-hand chord, bottom of a left-hand one.
+            const s = steps(hand);
+            return hand[0]!.staff === 1 ? s[s.length - 1]! : s[0]!;
+          };
+          if (beats[e]![0]!.staff !== beats[e - 1]![0]!.staff && level !== 13) continue;
+          const gap = Math.abs(top(beats[e]!) - top(beats[e - 1]!));
+          moves++;
+          if (gap <= 1) near++;
+          assert.ok(gap <= 4, `level ${level}: leap of ${gap}`);
+        }
+      }
+      assert.ok(near / moves > 0.45, `level ${level}`);
+    }
+  });
+
+  it('becomes a score with all of a beat\'s notes in one event, each on its staff', () => {
+    const ex = generateExercise({ level: 13, seed: 5 });
+    const score = scoreFromExercise(ex);
+    assert.equal(score.events.length, 16);
+    for (const event of score.events) {
+      assert.equal(event.notes.length, 4);
+      assert.deepEqual(event.notes.map((n) => n.staff).sort(), [1, 1, 1, 2]);
     }
   });
 });

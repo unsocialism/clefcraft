@@ -47,6 +47,7 @@ const DONE_MISSED = '#c2410c';
 const NOW_BG_RIGHT = 'rgba(47, 109, 246, 0.13)';
 const NOW_BG_LEFT = 'rgba(240, 140, 0, 0.16)';
 const NOW_BG_WRONG = 'rgba(214, 51, 108, 0.16)';
+const NOW_BG_BOTH = 'rgba(92, 104, 128, 0.13)';
 
 export interface TrainingSheetProps {
   readonly exercise: Exercise;
@@ -80,7 +81,7 @@ function barNotes(
   measure: number,
   clef: TrainingClef,
   props: TrainingSheetProps,
-  drawn: Map<number, StaveNote>,
+  drawn: Map<number, StaveNote[]>,
 ): StaveNote[] {
   const staff = clef === 'treble' ? 1 : 2;
   // One stave note per beat, holding one key or the two of an interval.
@@ -114,7 +115,8 @@ function barNotes(
     // Ledger lines in the note's colour read as part of the note; left
     // black they look like a second, unrelated mark.
     staveNote.setLedgerLineStyle({ fillStyle: colour, strokeStyle: colour });
-    drawn.set(index, staveNote);
+    // A both-hands beat has a stave note on each staff; keep them all.
+    drawn.set(index, [...(drawn.get(index) ?? []), staveNote]);
     return staveNote;
   });
 }
@@ -143,7 +145,7 @@ function draw(host: HTMLDivElement, shownWidth: number, props: TrainingSheetProp
   const key = keySignatureByFifths(exercise.fifths);
   const leadIn = FIRST_BAR_EXTRA + Math.abs(exercise.fifths) * KEY_EXTRA_PER_ACCIDENTAL;
   const usable = width - SIDE_MARGIN * 2;
-  const drawn = new Map<number, StaveNote>();
+  const drawn = new Map<number, StaveNote[]>();
 
   for (let line = 0; line < lines; line++) {
     const firstBar = line * barsPerLine + 1;
@@ -202,19 +204,33 @@ function draw(host: HTMLDivElement, shownWidth: number, props: TrainingSheetProp
   svg?.setAttribute('height', String(height * scale));
 
   const now = drawn.get(props.currentIndex);
-  if (now && svg) {
-    const box = now.getBoundingBox();
-    const note = exercise.notes.find((n) => n.event === props.currentIndex)!;
+  if (now?.length && svg) {
+    // One band around everything due now — across both staves when both
+    // hands play, so it reads as a single thing to press.
+    const boxes = now.map((n) => n.getBoundingBox());
+    const left = Math.min(...boxes.map((b) => b.getX()));
+    const top = Math.min(...boxes.map((b) => b.getY()));
+    const right = Math.max(...boxes.map((b) => b.getX() + b.getW()));
+    const bottom = Math.max(...boxes.map((b) => b.getY() + b.getH()));
+    const staves = new Set(
+      exercise.notes.filter((n) => n.event === props.currentIndex).map((n) => n.staff),
+    );
     const pad = 7;
     const band = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-    band.setAttribute('x', String(box.getX() - pad));
-    band.setAttribute('y', String(box.getY() - pad));
-    band.setAttribute('width', String(box.getW() + pad * 2));
-    band.setAttribute('height', String(box.getH() + pad * 2));
+    band.setAttribute('x', String(left - pad));
+    band.setAttribute('y', String(top - pad));
+    band.setAttribute('width', String(right - left + pad * 2));
+    band.setAttribute('height', String(bottom - top + pad * 2));
     band.setAttribute('rx', '8');
     band.setAttribute(
       'fill',
-      props.wrongNow ? NOW_BG_WRONG : note.staff === 1 ? NOW_BG_RIGHT : NOW_BG_LEFT,
+      props.wrongNow
+        ? NOW_BG_WRONG
+        : staves.size > 1
+          ? NOW_BG_BOTH
+          : staves.has(1)
+            ? NOW_BG_RIGHT
+            : NOW_BG_LEFT,
     );
     band.setAttribute('class', 'training-sheet__now');
     svg.insertBefore(band, svg.firstChild);

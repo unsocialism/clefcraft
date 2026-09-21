@@ -1,4 +1,4 @@
-import { LEVELS, levelById } from '../../core/training/generator.ts';
+import { LEVELS, isChordLevel, levelById } from '../../core/training/generator.ts';
 import type { TrainingResult, TrainingSession } from '../../hooks/useTraining.ts';
 
 function seconds(ms: number): string {
@@ -12,7 +12,7 @@ export function TrainingControls({ training }: { training: TrainingSession }) {
   const { index, finished } = practice.state;
   const total = exercise.events;
   const current = exercise.notes.find((n) => n.event === Math.min(index, total - 1));
-  const noun = levelById(exercise.level).intervals ? 'beat' : 'note';
+  const noun = isChordLevel(levelById(exercise.level)) ? 'beat' : 'note';
 
   return (
     <div className="toolbar toolbar--compact training-controls">
@@ -36,7 +36,7 @@ export function TrainingControls({ training }: { training: TrainingSession }) {
         {finished
           ? 'Done.'
           : training.rolled
-            ? 'Not quite together — press both notes at the same moment.'
+            ? 'Not quite together — press all the notes at the same moment.'
             : `${levelById(level).description} · Bar ${current?.measure ?? 1}, ${noun} ${index + 1} of ${total}`}
       </span>
     </div>

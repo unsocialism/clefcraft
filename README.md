@@ -11,7 +11,7 @@ Three modes:
 - **Practice** — open a MusicXML file or a PDF. The keyboard lights the keys
   for the next notes, blue for the right hand and orange for the left, with
   the two after that shown faintly so you can prepare your hand.
-- **Training** — generated sight-reading exercises on a ladder of nine
+- **Training** — generated sight-reading exercises on a ladder of thirteen
   levels. The keyboard stays dark while you read and only shows the answer
   after a wrong key.
 
@@ -88,11 +88,17 @@ wrong habit. Every level adds exactly one thing to the one before:
 | 7 · Intervals | Two notes at once in one hand — thirds to octaves — in any order |
 | 8 · Intervals together | The same, pressed together (the 120ms chord window) |
 | 9 · More keys | Keys up to four sharps or flats |
+| 10 · Triads | Three-note chords in one hand, root position, pressed together — back to keys up to two sharps or flats |
+| 11 · Inversions | Triads in first and second inversion too |
+| 12 · Both hands | A note in each hand on every beat, pressed together |
+| 13 · Both hands, chords | A triad in the right hand over a bass note, keys up to four sharps or flats |
 
 The note to play is shown in its hand's colour; played notes turn green, or
 orange if they took more than one try. The keyboard gives no hint until a
-wrong key. On levels 8 and 9, a pair that is not pressed together starts
-over, and the controls bar says so. At the end you get how many were right
+wrong key. From level 8 on, notes that are not pressed together start
+over, and the controls bar says so. The chord levels (10–13) have no
+accidentals: an altered note would change the chord, which is a harmony
+lesson rather than a reading one. At the end you get how many were right
 first time, the wrong keys, and the time; any key on the piano then starts
 the next exercise. The level you are on is remembered.
 
@@ -187,7 +193,7 @@ src/
       practiceEngine.ts the practice state machine
       testScores.ts     builders shared by tests and demos
     training/
-      generator.ts      the nine levels and the exercise generator
+      generator.ts      the thirteen levels and the exercise generator
     library/
       library.ts        scores and corrections kept on the device
     noteState.ts        held keys + sustain pedal, as a pure reducer
@@ -288,7 +294,7 @@ would need a native CoreMIDI bridge behind the same interface.
 
 ## What has and has not been tested
 
-**Verified:** 266 unit tests — among them pitch spelling across all 15 keys
+**Verified:** 279 unit tests — among them pitch spelling across all 15 keys
 and all 88 notes, MIDI parsing, the sustain pedal, the practice state
 machine and its chord window, PDF reading against real Sibelius and
 MuseScore exports, corrections, the device library, and the training
@@ -347,7 +353,6 @@ pass, publishes the app to GitHub Pages (`.github/workflows/deploy.yml`).
 ## Ideas for later
 
 - Rhythm from PDFs, so play-along works for them too
-- Triads, and both hands at once, as training levels
 - Chord naming from the sounding notes
 - Repeats and da capo handling in the practice cursor
 - Exporting and importing your corrections as a backup
