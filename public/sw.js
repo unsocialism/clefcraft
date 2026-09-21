@@ -3,9 +3,9 @@
  *
  * Hand-written rather than generated, because the rules are short:
  *
- * - Pages (navigations) go to the network first, so an update you deploy
- *   is picked up the next time the app opens online. Offline, the last
- *   copy is served instead.
+ * - Pages (navigations) go to the network first, past the browser's HTTP
+ *   cache, so an update you deploy is picked up the next time the app
+ *   opens online. Offline, the last copy is served instead.
  * - Everything else from this site is served from the cache when present.
  *   Vite puts a content hash in every built file name, so a cached file can
  *   never be stale: new code arrives under a new name.
@@ -56,10 +56,16 @@ self.addEventListener('fetch', (event) => {
 
   if (request.mode === 'navigate') {
     event.respondWith(
-      fetch(request)
+      // `no-cache` makes the browser check with the server every time.
+      // Without it, the browser's own HTTP cache answers: GitHub Pages
+      // allows it to keep a page for ten minutes, so an app reopened soon
+      // after a deploy kept starting the old version — from "the network".
+      fetch(request, { cache: 'no-cache' })
         .then((response) => {
-          const copy = response.clone();
-          caches.open(CACHE).then((cache) => cache.put('./', copy));
+          if (response.ok) {
+            const copy = response.clone();
+            caches.open(CACHE).then((cache) => cache.put('./', copy));
+          }
           return response;
         })
         .catch(() => caches.match('./')),
