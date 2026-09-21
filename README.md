@@ -5,6 +5,7 @@ lit keys on an on-screen keyboard, and as real notation. It runs in the
 browser and installs on a phone like an app; see [DEPLOY.md](DEPLOY.md).
 
 Three modes:
+<img width="852" height="647" alt="image" src="https://github.com/user-attachments/assets/6465ddca-ab89-487e-ab10-4ad288e6d94a" />
 
 - **Free play** — play anything; see the note names and a live grand staff.
 - **Practice** — open a MusicXML file or a PDF. The keyboard lights the keys
@@ -16,28 +17,11 @@ Three modes:
 
 ## Getting started
 
-```bash
-npm install
-npm run dev
-```
+<img width="500" height="500" alt="qr code" src="https://github.com/user-attachments/assets/343077cd-dbca-4135-8cf3-1c6dc17c6732" />
 
-Then open the printed URL in **Chrome, Edge or Opera**, plug the piano in over
-USB, and allow MIDI access when the browser asks. On Windows PowerShell, use
-`npm.cmd` in place of `npm`.
+open the URL https://unsocialism.github.io/clefcraft/ in **Chrome, Edge or Opera**, plug the piano in over
+USB, and allow MIDI access when the browser asks.
 
-| Command | What it does |
-| --- | --- |
-| `npm run dev` | Dev server with hot reload |
-| `npm run build` | Typecheck, then produce a production build in `dist/` |
-| `npm run preview` | Serve the production build |
-| `npm test` | Run the unit tests |
-| `npm run typecheck` | `tsc --noEmit` |
-
-Requires Node 22.6 or newer — the tests run TypeScript directly through Node's
-built-in test runner, with no build step and no test framework dependency.
-
-Pushing to `main` on GitHub runs the tests and the type check and, if both
-pass, publishes the app to GitHub Pages (`.github/workflows/deploy.yml`).
 
 ## Loading scores
 

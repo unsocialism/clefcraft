@@ -109,6 +109,11 @@ export function App() {
   // Not while correcting notes: there, every tap on the page means "a note
   // goes here", and two quick ones would be misread as a request to hide.
   const immersive = useImmersive(mainRef, { allowDoubleTap: !editing });
+  // A mouse or trackpad gets PC wording in the hint; a finger gets touch.
+  const finePointer = useMemo(
+    () => globalThis.matchMedia?.('(hover: hover) and (pointer: fine)').matches ?? false,
+    [],
+  );
   // Hidden controls must also be out of reach of Tab and screen readers.
   // (`inert` is set directly: React 18 does not know the attribute.)
   const topSlotRef = useRef<HTMLDivElement | null>(null);
@@ -440,6 +445,14 @@ export function App() {
               >
                 {showSettings ? 'Hide settings' : 'Settings'}
               </button>
+              <button
+                type="button"
+                className="button"
+                title="Only the music and the keyboard. Esc or the tab at the top brings the menus back."
+                onClick={() => immersive.set(true)}
+              >
+                Hide menus
+              </button>
             </div>
           </header>
 
@@ -617,7 +630,8 @@ export function App() {
         <button
           type="button"
           className="app__reveal"
-          aria-label="Show the controls"
+          aria-label="Show the menus"
+          title="Show the menus (Esc)"
           onClick={() => immersive.set(false)}
         >
           <span aria-hidden="true">⌄</span>
@@ -625,7 +639,9 @@ export function App() {
       )}
       {immersive.hint && (
         <p className="app__hint" role="status">
-          Double-tap or pull down to bring the controls back
+          {finePointer
+            ? 'Press Esc, double-click the music, or use the tab at the top to bring the menus back'
+            : 'Double-tap or pull down to bring the menus back'}
         </p>
       )}
 
