@@ -168,6 +168,7 @@ export function PianoKeyboard({
           tabIndex={-1}
           aria-label={noteName(spelled)}
           aria-pressed={isActive}
+          data-midi={key.midi}
           data-guide={guideDistance ?? undefined}
           data-hand={guide?.hand}
           {...pointerHandlers(key.midi)}

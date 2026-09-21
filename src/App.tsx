@@ -19,7 +19,9 @@ import { scoreFromPdfNotes } from './core/score/pdfScore.ts';
 import { EMPTY_SCORE } from './core/score/types.ts';
 import type { PdfReadResult } from './core/pdf/pdfNotes.ts';
 import { usePianoInput } from './hooks/usePianoInput.ts';
+import { useImmersive } from './hooks/useImmersive.ts';
 import { usePractice } from './hooks/usePractice.ts';
+import { useTraining } from './hooks/useTraining.ts';
 import { GrandStaff } from './ui/GrandStaff.tsx';
 import { NoteReadout } from './ui/NoteReadout.tsx';
 import { PianoKeyboard, type KeyGuide } from './ui/PianoKeyboard.tsx';
@@ -30,8 +32,16 @@ import { MidiMonitor } from './ui/practice/MidiMonitor.tsx';
 import { ScoreLibrary } from './ui/practice/ScoreLibrary.tsx';
 import { ScoreLoader, type LoadedFile } from './ui/practice/ScoreLoader.tsx';
 import { ScoreView, type LoadedScore } from './ui/score/ScoreView.tsx';
+import { TrainingControls, TrainingSummary } from './ui/training/TrainingControls.tsx';
+import { TrainingSheet } from './ui/training/TrainingSheet.tsx';
 
-type AppMode = 'free' | 'practice';
+type AppMode = 'free' | 'practice' | 'training';
+
+const MODES: readonly { id: AppMode; label: string }[] = [
+  { id: 'free', label: 'Free play' },
+  { id: 'practice', label: 'Practice' },
+  { id: 'training', label: 'Training' },
+];
 
 /**
  * Fixed application shell.
@@ -75,18 +85,36 @@ export function App() {
   const practice = usePractice();
   const { handleMidi, handleRawMessage, setScore } = practice;
 
-  // Only feed the practice engine while its tab is open, so free play cannot
-  // silently advance a loaded score.
+  // Training runs its own practice engine, so a piece you are working on
+  // keeps its place while you do a few reading exercises in between.
+  const training = useTraining();
+  const trainingMidi = training.handleMidi;
+  const trainingRaw = training.practice.handleRawMessage;
+
+  // Only feed a practice engine while its tab is open, so free play cannot
+  // silently advance a loaded score — and each tab's keys go to its own.
   const inPractice = appMode === 'practice';
+  const inTraining = appMode === 'training';
   const piano = usePianoInput(
     useMemo(
       () => ({
-        onEvent: inPractice ? handleMidi : undefined,
-        onRawMessage: inPractice ? handleRawMessage : undefined,
+        onEvent: inPractice ? handleMidi : inTraining ? trainingMidi : undefined,
+        onRawMessage: inPractice ? handleRawMessage : inTraining ? trainingRaw : undefined,
       }),
-      [inPractice, handleMidi, handleRawMessage],
+      [inPractice, inTraining, handleMidi, handleRawMessage, trainingMidi, trainingRaw],
     ),
   );
+
+  const mainRef = useRef<HTMLElement | null>(null);
+  // Not while correcting notes: there, every tap on the page means "a note
+  // goes here", and two quick ones would be misread as a request to hide.
+  const immersive = useImmersive(mainRef, { allowDoubleTap: !editing });
+  // Hidden controls must also be out of reach of Tab and screen readers.
+  // (`inert` is set directly: React 18 does not know the attribute.)
+  const topSlotRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    topSlotRef.current?.toggleAttribute('inert', immersive.on);
+  }, [immersive.on]);
 
   const { connect, status } = piano;
 
@@ -334,6 +362,20 @@ export function App() {
   // Staff 1 is the right hand and staff 2 the left: the convention of every
   // piano score, and the only hand information a score carries.
   const guides: readonly KeyGuide[] = useMemo(() => {
+    if (inTraining) {
+      // Training is for reading, so the keyboard stays quiet — until a wrong
+      // key, when it shows where the note is. Showing it from the start
+      // would turn a reading exercise into following lit-up keys.
+      const now = training.practice.ahead[0];
+      if (!now || training.practice.state.wrongHere === 0) return [];
+      return now.remaining.map((midi) => ({
+        midi,
+        distance: 0,
+        hand: (now.event.notes.some((n) => n.midi === midi && n.staff === 2)
+          ? 'left'
+          : 'right') as KeyGuide['hand'],
+      }));
+    }
     if (!inPractice) return [];
     return practice.ahead.flatMap((step) =>
       step.remaining.map((midi) => {
@@ -345,7 +387,7 @@ export function App() {
         return { midi, distance: step.distance, hand };
       }),
     );
-  }, [inPractice, practice.ahead]);
+  }, [inPractice, practice.ahead, inTraining, training.practice.ahead, training.practice.state.wrongHere]);
 
   const cursorIndex = practice.score.events[practice.state.index]?.cursorIndex ?? 0;
 
@@ -360,226 +402,256 @@ export function App() {
   const expectedNow = practice.ahead[0]?.remaining ?? [];
 
   return (
-    <div className="app">
-      <div className="app__top">
-        <header className="app__header">
-          <div className="app__title">
-            <h1>clefcraft</h1>
-            <span className={`status status--${piano.status}`}>
-              <span className="status__dot" aria-hidden="true" />
-              {piano.status === 'ready' ? 'Listening' : 'Not connected'}
-            </span>
-          </div>
-          <div className="app__header-actions">
-            <nav className="segmented" role="tablist" aria-label="Mode">
-              <button
-                type="button"
-                role="tab"
-                aria-selected={appMode === 'free'}
-                className={
-                  appMode === 'free'
-                    ? 'segmented__option segmented__option--on'
-                    : 'segmented__option'
-                }
-                onClick={() => setAppMode('free')}
-              >
-                Free play
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={appMode === 'practice'}
-                className={
-                  appMode === 'practice'
-                    ? 'segmented__option segmented__option--on'
-                    : 'segmented__option'
-                }
-                onClick={() => setAppMode('practice')}
-              >
-                Practice
-              </button>
-            </nav>
-            <button
-              type="button"
-              className="button"
-              aria-expanded={showSettings}
-              onClick={() => setShowSettings((open) => !open)}
-            >
-              {showSettings ? 'Hide settings' : 'Settings'}
-            </button>
-          </div>
-        </header>
-
-        {showSettings && (
-          <Toolbar
-            status={piano.status}
-            errorMessage={piano.errorMessage}
-            ports={piano.ports}
-            selectedPortId={piano.selectedPortId}
-            fifths={fifths}
-            accidentals={accidentals}
-            showLabels={showLabels}
-            onConnect={piano.connect}
-            onSelectPort={piano.selectPort}
-            onFifthsChange={setFifths}
-            onAccidentalsChange={setAccidentals}
-            onShowLabelsChange={setShowLabels}
-            onPanic={piano.panic}
-          />
-        )}
-
-        {piano.status === 'unsupported' && (
-          <p className="app__banner">
-            This browser has no Web MIDI support. Chrome, Edge or Opera will work — on Android too.
-            Safari and Firefox on iOS cannot read MIDI devices at all. You can still click the keys
-            below.
-          </p>
-        )}
-
-        {appMode === 'free' && (
-          <NoteReadout notes={piano.notes} fifths={fifths} accidentals={accidentals} />
-        )}
-
-        {appMode === 'practice' && (
-          <>
-            <div className="loader-row">
-              {file && (
-                <button type="button" className="button" onClick={closeFile}>
-                  ← Your scores
-                </button>
-              )}
-              <ScoreLoader
-                onLoad={handleFile}
-                onError={setLoadError}
-                currentName={file?.name ?? null}
-              />
+    <div className={immersive.on ? 'app app--immersive' : 'app'}>
+      <div className="app__top-slot" ref={topSlotRef}>
+        <div className="app__top">
+          <header className="app__header">
+            <div className="app__title">
+              <h1>clefcraft</h1>
+              <span className={`status status--${piano.status}`}>
+                <span className="status__dot" aria-hidden="true" />
+                {piano.status === 'ready' ? 'Listening' : 'Not connected'}
+              </span>
             </div>
+            <div className="app__header-actions">
+              <nav className="segmented" role="tablist" aria-label="Mode">
+                {MODES.map((mode) => (
+                  <button
+                    key={mode.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={appMode === mode.id}
+                    className={
+                      appMode === mode.id
+                        ? 'segmented__option segmented__option--on'
+                        : 'segmented__option'
+                    }
+                    onClick={() => setAppMode(mode.id)}
+                  >
+                    {mode.label}
+                  </button>
+                ))}
+              </nav>
+              <button
+                type="button"
+                className="button"
+                aria-expanded={showSettings}
+                onClick={() => setShowSettings((open) => !open)}
+              >
+                {showSettings ? 'Hide settings' : 'Settings'}
+              </button>
+            </div>
+          </header>
 
-            {practice.score.events.length > 0 && (
-              <PracticeControls
-                score={practice.score}
-                state={practice.state}
-                mode={practice.mode}
-                requireClean={practice.requireClean}
-                chordWindowMs={practice.chordWindowMs}
-                tempoBpm={practice.tempoBpm}
-                running={practice.running}
-                progress={practice.progress}
-                onModeChange={practice.setMode}
-                onRequireCleanChange={practice.setRequireClean}
-                onChordWindowChange={practice.setChordWindowMs}
-                onTempoChange={practice.setTempoBpm}
-                onStart={practice.start}
-                onPause={practice.pause}
-                onRestart={practice.restart}
-                onSeekMeasure={practice.seekMeasure}
-              />
-            )}
+          {showSettings && (
+            <Toolbar
+              status={piano.status}
+              errorMessage={piano.errorMessage}
+              ports={piano.ports}
+              selectedPortId={piano.selectedPortId}
+              fifths={fifths}
+              accidentals={accidentals}
+              showLabels={showLabels}
+              onConnect={piano.connect}
+              onSelectPort={piano.selectPort}
+              onFifthsChange={setFifths}
+              onAccidentalsChange={setAccidentals}
+              onShowLabelsChange={setShowLabels}
+              onPanic={piano.panic}
+            />
+          )}
 
-            {/* A diagnostic you use *while* playing, so it belongs in the
-                fixed bar. Below the score it would sit past the end of a
-                long piece — reachable only by scrolling away from the music. */}
-            {practice.score.events.length > 0 && (
-              <MidiMonitor
-                recent={practice.state.recent}
-                rawMessages={practice.rawMessages}
-                ignoreDuplicatesMs={practice.ignoreDuplicatesMs}
-                onIgnoreDuplicatesChange={practice.setIgnoreDuplicatesMs}
-                ports={piano.ports}
-                wiring={piano.getWiring()}
-                expected={expectedNow}
-                fifths={fifths}
-                accidentals={accidentals}
-              />
-            )}
+          {piano.status === 'unsupported' && (
+            <p className="app__banner">
+              This browser has no Web MIDI support. Chrome, Edge or Opera will work — on Android too.
+              Safari and Firefox on iOS cannot read MIDI devices at all. You can still click the keys
+              below.
+            </p>
+          )}
 
-            {file?.kind === 'pdf' && (
-              <div className="toolbar toolbar--compact">
-                <label className="toolbar__field">
-                  <span>Page width · {pdfZoom}px</span>
-                  <input
-                    type="range"
-                    min={300}
-                    max={1800}
-                    step={50}
-                    value={pdfZoom}
-                    onChange={(event) => setPdfZoom(Number(event.target.value))}
-                  />
-                </label>
-                <label className="toolbar__checkbox">
-                  <input
-                    type="checkbox"
-                    checked={showOverlay}
-                    onChange={(event) => setShowOverlay(event.target.checked)}
-                  />
-                  <span>Mark what was read</span>
-                </label>
-                <label className="toolbar__checkbox">
-                  <input
-                    type="checkbox"
-                    checked={showPitches}
-                    onChange={(event) => setShowPitches(event.target.checked)}
-                  />
-                  <span>Label pitches</span>
-                </label>
-                {pdfRead && (
-                  <>
-                    <button
-                      type="button"
-                      className={editing ? 'button button--primary' : 'button'}
-                      aria-pressed={editing}
-                      onClick={() => {
-                        setEditing((on) => !on);
-                        setSelectedNoteId(null);
-                      }}
-                    >
-                      {editing ? 'Done correcting' : 'Correct notes'}
-                    </button>
-                    {editing && (
-                      <>
-                        <button
-                          type="button"
-                          className="button"
-                          disabled={editHistory.length === 0}
-                          onClick={undoEdit}
-                        >
-                          Undo
-                        </button>
-                        <button
-                          type="button"
-                          className="button"
-                          disabled={editCount(edits) === 0}
-                          onClick={() => {
-                            commitEdits(NO_EDITS);
-                            setSelectedNoteId(null);
-                          }}
-                        >
-                          Discard all corrections ({editCount(edits)})
-                        </button>
-                      </>
-                    )}
-                    <span className="toolbar__inline-note">
-                      {editing
-                        ? 'Tap a marker to fix it, or tap a staff where a note was missed to add it. On a keyboard: ↑↓ semitone, Shift+↑↓ octave, H hand, Delete, Esc.'
-                        : `${shownNotes.length} notes over ${pdfRead.diagnostics.measures} measures · ${
-                            pdfRead.diagnostics.fontProfile
-                          } font${
-                            editCount(edits) ? ` · ${editCount(edits)} corrected` : ''
-                          }. Rhythm is not read, so play-along timing is not available for a PDF.`}
-                    </span>
-                  </>
+          {appMode === 'training' && <TrainingControls training={training} />}
+
+          {appMode === 'free' && (
+            <NoteReadout notes={piano.notes} fifths={fifths} accidentals={accidentals} />
+          )}
+
+          {appMode === 'practice' && (
+            <>
+              <div className="loader-row">
+                {file && (
+                  <button type="button" className="button" onClick={closeFile}>
+                    ← Your scores
+                  </button>
                 )}
+                <ScoreLoader
+                  onLoad={handleFile}
+                  onError={setLoadError}
+                  currentName={file?.name ?? null}
+                />
               </div>
-            )}
 
-            {loadError && <p className="app__banner app__banner--error">{loadError}</p>}
-          </>
-        )}
+              {practice.score.events.length > 0 && (
+                <PracticeControls
+                  score={practice.score}
+                  state={practice.state}
+                  mode={practice.mode}
+                  requireClean={practice.requireClean}
+                  chordWindowMs={practice.chordWindowMs}
+                  tempoBpm={practice.tempoBpm}
+                  running={practice.running}
+                  progress={practice.progress}
+                  onModeChange={practice.setMode}
+                  onRequireCleanChange={practice.setRequireClean}
+                  onChordWindowChange={practice.setChordWindowMs}
+                  onTempoChange={practice.setTempoBpm}
+                  onStart={practice.start}
+                  onPause={practice.pause}
+                  onRestart={practice.restart}
+                  onSeekMeasure={practice.seekMeasure}
+                />
+              )}
+
+              {/* A diagnostic you use *while* playing, so it belongs in the
+                  fixed bar. Below the score it would sit past the end of a
+                  long piece — reachable only by scrolling away from the music. */}
+              {practice.score.events.length > 0 && (
+                <MidiMonitor
+                  recent={practice.state.recent}
+                  rawMessages={practice.rawMessages}
+                  ignoreDuplicatesMs={practice.ignoreDuplicatesMs}
+                  onIgnoreDuplicatesChange={practice.setIgnoreDuplicatesMs}
+                  ports={piano.ports}
+                  wiring={piano.getWiring()}
+                  expected={expectedNow}
+                  fifths={fifths}
+                  accidentals={accidentals}
+                />
+              )}
+
+              {file?.kind === 'pdf' && (
+                <div className="toolbar toolbar--compact">
+                  <label className="toolbar__field">
+                    <span>Page width · {pdfZoom}px</span>
+                    <input
+                      type="range"
+                      min={300}
+                      max={1800}
+                      step={50}
+                      value={pdfZoom}
+                      onChange={(event) => setPdfZoom(Number(event.target.value))}
+                    />
+                  </label>
+                  <label className="toolbar__checkbox">
+                    <input
+                      type="checkbox"
+                      checked={showOverlay}
+                      onChange={(event) => setShowOverlay(event.target.checked)}
+                    />
+                    <span>Mark what was read</span>
+                  </label>
+                  <label className="toolbar__checkbox">
+                    <input
+                      type="checkbox"
+                      checked={showPitches}
+                      onChange={(event) => setShowPitches(event.target.checked)}
+                    />
+                    <span>Label pitches</span>
+                  </label>
+                  {pdfRead && (
+                    <>
+                      <button
+                        type="button"
+                        className={editing ? 'button button--primary' : 'button'}
+                        aria-pressed={editing}
+                        onClick={() => {
+                          setEditing((on) => !on);
+                          setSelectedNoteId(null);
+                        }}
+                      >
+                        {editing ? 'Done correcting' : 'Correct notes'}
+                      </button>
+                      {editing && (
+                        <>
+                          <button
+                            type="button"
+                            className="button"
+                            disabled={editHistory.length === 0}
+                            onClick={undoEdit}
+                          >
+                            Undo
+                          </button>
+                          <button
+                            type="button"
+                            className="button"
+                            disabled={editCount(edits) === 0}
+                            onClick={() => {
+                              commitEdits(NO_EDITS);
+                              setSelectedNoteId(null);
+                            }}
+                          >
+                            Discard all corrections ({editCount(edits)})
+                          </button>
+                        </>
+                      )}
+                      <span className="toolbar__inline-note">
+                        {editing
+                          ? 'Tap a marker to fix it, or tap a staff where a note was missed to add it. On a keyboard: ↑↓ semitone, Shift+↑↓ octave, H hand, Delete, Esc.'
+                          : `${shownNotes.length} notes over ${pdfRead.diagnostics.measures} measures · ${
+                              pdfRead.diagnostics.fontProfile
+                            } font${
+                              editCount(edits) ? ` · ${editCount(edits)} corrected` : ''
+                            }. Rhythm is not read, so play-along timing is not available for a PDF.`}
+                      </span>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {loadError && <p className="app__banner app__banner--error">{loadError}</p>}
+            </>
+          )}
+        </div>
       </div>
 
-      <main className="app__main">
+      {immersive.on && (
+        <button
+          type="button"
+          className="app__reveal"
+          aria-label="Show the controls"
+          onClick={() => immersive.set(false)}
+        >
+          <span aria-hidden="true">⌄</span>
+        </button>
+      )}
+      {immersive.hint && (
+        <p className="app__hint" role="status">
+          Double-tap or pull down to bring the controls back
+        </p>
+      )}
+
+      <main className="app__main" ref={mainRef}>
         {appMode === 'free' ? (
           <GrandStaff notes={piano.notes} fifths={fifths} accidentals={accidentals} />
+        ) : appMode === 'training' ? (
+          <>
+            <TrainingSheet
+              exercise={training.exercise}
+              currentIndex={
+                training.result ? training.exercise.events : training.practice.state.index
+              }
+              wrongNow={training.practice.state.wrongHere > 0}
+              missed={training.missed}
+              follow
+            />
+            {training.result && (
+              <TrainingSummary
+                result={training.result}
+                level={training.level}
+                onNext={training.next}
+                onLevel={training.setLevel}
+              />
+            )}
+          </>
         ) : (
           <>
             {file?.kind === 'musicxml' && (
@@ -609,6 +681,7 @@ export function App() {
                 onSelect={setSelectedNoteId}
                 onAddAt={handleAddAt}
                 onEditAction={handleEditAction}
+                follow={immersive.on}
               />
             )}
 
@@ -668,7 +741,7 @@ export function App() {
           fifths={fifths}
           accidentals={accidentals}
           showLabels={showLabels}
-          guided={inPractice && practice.score.events.length > 0}
+          guided={(inPractice && practice.score.events.length > 0) || inTraining}
           onNoteDown={handleNoteDown}
           onNoteUp={handleNoteUp}
         />

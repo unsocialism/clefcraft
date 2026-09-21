@@ -10,6 +10,7 @@ import PdfWorker from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 
 import type { EditedNote } from '../../core/pdf/edits.ts';
 import { readPdfNotes, type PdfNote, type PdfReadResult } from '../../core/pdf/pdfNotes.ts';
+import { keepInView } from '../keepInView.ts';
 
 pdfjs.GlobalWorkerOptions.workerSrc = PdfWorker;
 
@@ -43,6 +44,8 @@ export interface PdfViewProps {
   /** A click on the page, in PDF coordinates, asking for a note there. */
   onAddAt?(page: number, x: number, y: number): void;
   onEditAction?(id: string, action: EditAction): void;
+  /** Scroll the page along so the notes due now stay on screen. */
+  readonly follow?: boolean;
 }
 
 export type EditAction = 'down' | 'up' | 'octaveDown' | 'octaveUp' | 'hand' | 'delete';
@@ -88,6 +91,7 @@ export function PdfView({
   onSelect,
   onAddAt,
   onEditAction,
+  follow = false,
 }: PdfViewProps) {
   const [boxes, setBoxes] = useState<readonly PageBox[]>([]);
   const [readNotes, setNotes] = useState<readonly PdfNote[]>([]);
@@ -272,8 +276,14 @@ export function PdfView({
     return () => window.removeEventListener('keydown', onKey);
   }, [editing, selectedId]);
 
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!follow || highlight.length === 0) return;
+    keepInView(rootRef.current?.querySelector('.pdf-mark__now'));
+  }, [follow, highlight, boxes]);
+
   return (
-    <div className="pdf-view">
+    <div className="pdf-view" ref={rootRef}>
       <div className="pdf-view__bar">
         <span>{fileName ?? 'No PDF loaded'}</span>
         {boxes.length > 0 && (

@@ -46,7 +46,7 @@ export interface Score {
   readonly tempoBpm: number | null;
   readonly measureCount: number;
   /** Where the score came from, for the UI to label. */
-  readonly source: 'musicxml' | 'pdf' | 'test';
+  readonly source: 'musicxml' | 'pdf' | 'training' | 'test';
 }
 
 export const EMPTY_SCORE: Score = {

@@ -1182,3 +1182,144 @@ body {
     min-width: 0;
   }
 }
+
+/* ---------- training ---------- */
+
+.training-controls__level select {
+  max-width: 16rem;
+}
+
+.training-summary {
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--warn);
+  border-radius: var(--radius);
+  background: var(--surface);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.training-summary--clean {
+  border-left-color: var(--ok);
+}
+
+.training-summary p {
+  margin: 0;
+}
+
+.training-summary__score {
+  font-size: 1rem;
+}
+
+.training-summary__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.training-summary__hint {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+/* ---------- controls out of the way ---------- */
+
+/* The controls live in a grid row that can collapse to nothing. Animating
+   grid-template-rows from 1fr to 0fr slides them away at whatever height
+   they happen to be, which max-height could only fake with a guess. */
+.app__top-slot {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows 220ms ease;
+  min-height: 0;
+}
+
+.app__top-slot > .app__top {
+  min-height: 0;
+  transition:
+    padding 220ms ease,
+    border-color 220ms ease;
+}
+
+.app--immersive .app__top-slot {
+  grid-template-rows: 0fr;
+}
+
+.app--immersive .app__top-slot > .app__top {
+  overflow: hidden;
+  padding-top: 0;
+  padding-bottom: 0;
+  border-bottom-color: transparent;
+}
+
+.app__main {
+  /* Pulling down at the top of the music is a gesture of ours; it must not
+     also reach the browser as pull-to-refresh. */
+  overscroll-behavior-y: contain;
+  /* No double-tap-to-zoom, so a double tap is ours and single taps are not
+     held back waiting to see whether a second one follows. */
+  touch-action: manipulation;
+}
+
+html,
+body {
+  overscroll-behavior: none;
+}
+
+.app__reveal {
+  position: fixed;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 30;
+  width: 56px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-top: 0;
+  border-radius: 0 0 12px 12px;
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: 18px;
+  line-height: 14px;
+  opacity: 0.75;
+  cursor: pointer;
+}
+
+.app__reveal:hover,
+.app__reveal:focus-visible {
+  opacity: 1;
+}
+
+.app__hint {
+  position: fixed;
+  top: 30px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 30;
+  margin: 0;
+  max-width: calc(100vw - 32px);
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: rgba(22, 25, 29, 0.86);
+  color: #fff;
+  font-size: 0.85rem;
+  text-align: center;
+  pointer-events: none;
+  animation: app-hint 2600ms ease forwards;
+}
+
+@keyframes app-hint {
+  0% { opacity: 0; transform: translate(-50%, -6px); }
+  8% { opacity: 1; transform: translate(-50%, 0); }
+  80% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app__top-slot,
+  .app__top-slot > .app__top {
+    transition: none;
+  }
+}
