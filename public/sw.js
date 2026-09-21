@@ -16,7 +16,10 @@
  * not start offline until it had been opened a second time.
  */
 
-const CACHE = 'clefcraft-v1';
+// Bumped when a file without a content hash in its name changes (the icons,
+// the manifest): the new worker then drops the old cache on activation,
+// rather than serving the old file from it forever.
+const CACHE = 'clefcraft-v2';
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
