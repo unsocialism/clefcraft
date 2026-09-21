@@ -8,7 +8,8 @@ browser and installs on a phone like an app; see [DEPLOY.md](DEPLOY.md).
 <img width="861" height="403" alt="image" src="https://github.com/user-attachments/assets/49664cfb-cc30-4d53-b2bd-5b99ffdcdb95" />
 
 
-Three modes:
+## Three modes:
+
 - **Free play** — play anything; see the note names and a live grand staff.
 - **Practice** — open a MusicXML file or a PDF. The keyboard lights the keys
   for the next notes, blue for the right hand and orange for the left, with
@@ -19,7 +20,7 @@ Three modes:
 
 ## Getting started
 
-<img width="500" height="500" alt="qr code" src="https://github.com/user-attachments/assets/343077cd-dbca-4135-8cf3-1c6dc17c6732" />
+<img width="300" height="300" alt="qr code" src="https://github.com/user-attachments/assets/343077cd-dbca-4135-8cf3-1c6dc17c6732" />
 
 open the URL https://unsocialism.github.io/clefcraft/ in **Chrome, Edge or Opera**, plug the piano in over
 USB, and allow MIDI access when the browser asks.
