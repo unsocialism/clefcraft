@@ -1,0 +1,33 @@
+{
+  "name": "clefcraft",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Reads electronic piano input over MIDI and displays it as notes on a keyboard graphic and a grand staff.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "node --experimental-strip-types --test \"src/**/*.test.ts\"",
+    "test:watch": "node --experimental-strip-types --test --watch \"src/**/*.test.ts\""
+  },
+  "dependencies": {
+    "opensheetmusicdisplay": "^2.1.3",
+    "pdfjs-dist": "^5.7.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "vexflow": "^4.2.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.11"
+  },
+  "engines": {
+    "node": ">=22.6.0"
+  }
+}

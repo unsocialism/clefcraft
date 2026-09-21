@@ -1,0 +1,57 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "useDefineForClassFields": true,
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+
+    /* Bundler mode. allowImportingTsExtensions lets every import carry an
+       explicit .ts/.tsx suffix, which is what makes `node --test src/core/...`
+       work without a build step. Vite resolves these fine. */
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+
+    /* Keeping @types/vexflow out of the program.
+       ------------------------------------------
+       opensheetmusicdisplay@2.1.3 lists @types/vexflow@1.x among its runtime
+       dependencies, so npm always installs it. Its last lines are:
+
+           declare module "vexflow" { export = Vex; }
+
+       That is an AMBIENT module declaration, and one of those outranks the
+       real package's types, a `paths` mapping, everything. Every
+       `import { Stave } from 'vexflow'` was checked against VexFlow 1's
+       single `Vex` export and reported as having no such member, while
+       --traceResolution cheerfully showed the correct 4.2.5 files being
+       resolved. The resolver and the checker disagreed, and only the
+       resolver was talking.
+
+       Two doors had to be shut. `types` stops the automatic inclusion of
+       everything under node_modules/@types. That alone is not enough: a
+       `/// <reference types="vexflow" />` inside a dependency's own .d.ts
+       pulls the shim in regardless. typeRoots is searched in order, so
+       ./types/vexflow — which declares nothing — answers that reference
+       first and the real package types stand.
+
+       Both settings govern GLOBAL inclusion only. react and react-dom stay
+       fully typed, because importing them resolves @types/react normally.
+       Delete ./types/vexflow and the six errors come straight back. */
+    "types": ["node"],
+    "typeRoots": ["./types", "./node_modules/@types"],
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "jsx": "react-jsx",
+
+    /* Linting */
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": false
+  },
+  "include": ["src"]
+}

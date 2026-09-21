@@ -1,0 +1,5 @@
+{
+  "name": "@types/vexflow",
+  "version": "0.0.0-local-shim",
+  "types": "index.d.ts"
+}
