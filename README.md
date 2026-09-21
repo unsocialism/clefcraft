@@ -110,6 +110,10 @@ a line deliberately does not. While the controls are hidden, a PDF scrolls
 along to keep the current note on screen. Double-tap is off while correcting
 notes, where every tap on the page means "a note goes here".
 
+On a PC the same is under **Hide menus**, next to Settings (double-clicking
+the music works too). **Esc**, or the small tab at the top of the screen,
+brings the menus back.
+
 ## Layout
 
 The page never scrolls. The header and controls stay put, the score or PDF
@@ -312,6 +316,33 @@ with what it made of each: counted, not in this chord, already had it, or too
 late. Between them those distinguish the three ways this can fail — notes not
 arriving at all, arriving at a pitch the score does not expect, or arriving
 correctly but spread too wide for the chord window.
+
+## Developing
+
+To run it from the source on your own computer:
+
+```bash
+npm install
+npm run dev
+```
+
+Then open the printed URL in **Chrome, Edge or Opera**. On Windows
+PowerShell, use `npm.cmd` in place of `npm`.
+
+| Command | What it does |
+| --- | --- |
+| `npm run dev` | Dev server with hot reload |
+| `npm run build` | Typecheck, then produce a production build in `dist/` |
+| `npm run preview` | Serve the production build |
+| `npm test` | Run the unit tests |
+| `npm run typecheck` | `tsc --noEmit` |
+
+Requires Node 22.6 or newer — the tests run TypeScript directly through Node's
+built-in test runner, with no build step and no test framework dependency.
+
+Pushing to `main` on GitHub runs the tests and the type check and, if both
+pass, publishes the app to GitHub Pages (`.github/workflows/deploy.yml`).
+[DEPLOY.md](DEPLOY.md) has the full steps.
 
 ## Ideas for later
 
