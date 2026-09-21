@@ -4,9 +4,11 @@ Reads a digital piano over MIDI and shows what you played — as a note name, as
 lit keys on an on-screen keyboard, and as real notation. It runs in the
 browser and installs on a phone like an app; see [DEPLOY.md](DEPLOY.md).
 
-Three modes:
-<img width="852" height="647" alt="image" src="https://github.com/user-attachments/assets/6465ddca-ab89-487e-ab10-4ad288e6d94a" />
 
+<img width="861" height="403" alt="image" src="https://github.com/user-attachments/assets/49664cfb-cc30-4d53-b2bd-5b99ffdcdb95" />
+
+
+Three modes:
 - **Free play** — play anything; see the note names and a live grand staff.
 - **Practice** — open a MusicXML file or a PDF. The keyboard lights the keys
   for the next notes, blue for the right hand and orange for the left, with
