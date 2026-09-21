@@ -1,13 +1,18 @@
 # clefcraft
 
 Reads a digital piano over MIDI and shows what you played — as a note name, as
-lit keys on an on-screen keyboard, and as real notation on a grand staff.
+lit keys on an on-screen keyboard, and as real notation. It runs in the
+browser and installs on a phone like an app; see [DEPLOY.md](DEPLOY.md).
 
-Two modes:
+Three modes:
 
 - **Free play** — play anything; see the note names and a live grand staff.
-- **Practice** — load a score, and the keyboard lights the keys for the next
-  note, with the following two shown faintly so you can prepare your hand.
+- **Practice** — open a MusicXML file or a PDF. The keyboard lights the keys
+  for the next notes, blue for the right hand and orange for the left, with
+  the two after that shown faintly so you can prepare your hand.
+- **Training** — generated sight-reading exercises on a ladder of nine
+  levels. The keyboard stays dark while you read and only shows the answer
+  after a wrong key.
 
 ## Getting started
 
@@ -17,7 +22,8 @@ npm run dev
 ```
 
 Then open the printed URL in **Chrome, Edge or Opera**, plug the piano in over
-USB, and allow MIDI access when the browser asks.
+USB, and allow MIDI access when the browser asks. On Windows PowerShell, use
+`npm.cmd` in place of `npm`.
 
 | Command | What it does |
 | --- | --- |
@@ -30,11 +36,8 @@ USB, and allow MIDI access when the browser asks.
 Requires Node 22.6 or newer — the tests run TypeScript directly through Node's
 built-in test runner, with no build step and no test framework dependency.
 
-To put this under version control:
-
-```bash
-git init && git add . && git commit -m "Initial commit"
-```
+Pushing to `main` on GitHub runs the tests and the type check and, if both
+pass, publishes the app to GitHub Pages (`.github/workflows/deploy.yml`).
 
 ## Loading scores
 
@@ -42,42 +45,94 @@ git init && git add . && git commit -m "Initial commit"
 | --- | --- | --- |
 | `.musicxml`, `.xml` | Engraved by OpenSheetMusicDisplay | **Yes** — exact pitches |
 | `.mxl` (compressed MusicXML) | Same | **Yes** |
-| `.pdf` | The PDF itself | No — see below |
+| `.pdf` from notation software | The PDF itself, with what was read marked on it | **Yes** — read from the page, correctable |
+| `.pdf` scanned from paper | The PDF itself | No |
 
-**Why MusicXML and not PDF for guidance.** A PDF is a picture of music; it
-does not say which pitches are on the page. Reading them back means optical
-music recognition, and the main open-source engine (Audiveris) puts itself at
-80–90% on clean printed scores, 60–75% on anything with multiple staves, and
-states that manual correction is expected. For a practice aid that is worse
-than useless: a 15% error rate means being told to press wrong keys, with no
-way to know which ones. MusicXML carries the pitches exactly, so the guidance
-is either right or absent — never confidently wrong.
+Every score you open is **kept on the device** (IndexedDB), with any
+corrections you made to it, and listed under *Your scores* for next time.
+Nothing is uploaded anywhere. A score is identified by a hash of its
+contents, so opening the same file again — even under another name — finds
+the existing entry and its corrections.
 
-MuseScore.com has a large free MusicXML library, and MuseScore (the desktop
-app) exports MusicXML from anything you already own.
+### Reading notes from a PDF
 
-PDFs are displayed for reading, at an adjustable page width. There is no
-guidance on that path yet — the app says so on screen rather than leaving you
-to wonder.
+A PDF exported from Sibelius, MuseScore or similar is not a picture: its
+noteheads are font glyphs with exact coordinates, and its staff lines are
+drawn paths. So reading one is geometry, not image recognition. The reader
+walks the page's drawing operators (`core/pdf/glyphs.ts`), finds the staves
+and barlines, and turns each notehead's height on the staff into a pitch,
+using the clef and key signature it finds (`core/pdf/pdfNotes.ts`). Sibelius's
+Opus font and the standard SMuFL fonts (MuseScore's Leland, Bravura) are
+both mapped.
 
-**Planned, and measured on a real file.** PDFs exported from notation
-software are not images — their noteheads are embedded font glyphs with exact
-coordinates. On a Sibelius export tested here: 857 noteheads across two pages,
-and within a staff their vertical positions land on a 2.30pt lattice with a
-mean error of 0.021 steps. Pitch is arithmetic, not recognition.
+Measured on the two files it was built against: a MuseScore export read
+434 of 434 notes and 95 of 95 measures correctly; a Sibelius export gives
+747 notes with none off the staff grid.
 
-What remains is anchoring that lattice to real pitch (clef and staff lines,
-both present in the file), rhythm beyond notehead shape, note ordering across
-voices and systems, and a glyph table per music font — this maps Sibelius's
-Opus; MuseScore's Leland/Bravura and Finale's Maestro each need their own.
-The expected failure mode is notes in the wrong order, not wrong notes.
+What it does not read is **rhythm**. The notes are in the right order and
+chords are grouped, but durations are unknown — so a PDF works in *wait for
+me* mode and not in *play along*. A scanned PDF has no glyphs at all and
+gets no guidance.
+
+**Checking and correcting the reading.** *Mark what was read* puts a marker
+on every notehead it found, coloured by hand; *Label pitches* adds the pitch
+it read. A wrong note is obvious at a glance. *Correct notes* lets you:
+
+- tap a marker to move it a semitone or an octave, switch its hand, or delete it
+  (on a keyboard: ↑↓, Shift+↑↓, H, Delete, Esc);
+- tap an empty spot on a staff to add a note that was missed;
+- undo, or discard every correction.
+
+Corrections are stored as changes to the reading, not as an edited copy, and
+are saved as you make them.
+
+## Training
+
+Each exercise is four bars of quarter notes. Notes move mostly by step,
+with the occasional small leap, because reading real music is mostly reading
+intervals — "up a third from here" — and a random jumble of notes trains the
+wrong habit. Every level adds exactly one thing to the one before:
+
+| Level | What it adds |
+| --- | --- |
+| 1 · Five-finger position | Treble clef, C4 to G4 |
+| 2 · Treble staff | Every line and space of the treble staff |
+| 3 · Bass staff | Every line and space of the bass staff |
+| 4 · Both staves | The melody passes between the hands, at barlines |
+| 5 · Ledger lines | Two ledger lines above and below each staff |
+| 6 · Sharps and flats | Keys up to two sharps or flats, and accidentals in the bar |
+| 7 · Intervals | Two notes at once in one hand — thirds to octaves — in any order |
+| 8 · Intervals together | The same, pressed together (the 120ms chord window) |
+| 9 · More keys | Keys up to four sharps or flats |
+
+The note to play is shown in its hand's colour; played notes turn green, or
+orange if they took more than one try. The keyboard gives no hint until a
+wrong key. On levels 8 and 9, a pair that is not pressed together starts
+over, and the controls bar says so. At the end you get how many were right
+first time, the wrong keys, and the time; any key on the piano then starts
+the next exercise. The level you are on is remembered.
+
+Exercises are generated from a seed (`core/training/generator.ts`), which is
+what makes them testable: the same seed always gives the same exercise.
+
+## On a phone
+
+The app is installable (a PWA) and works offline once it has been opened
+online. Double-tap the music to slide the controls away, leaving only the
+sheet and the keyboard — useful with a phone in landscape on the music
+stand. Double-tap again, pull down from the top of the sheet, or tap the
+small tab at the top of the screen to bring them back. Scrolling up to reread
+a line deliberately does not. While the controls are hidden, a PDF scrolls
+along to keep the current note on screen. Double-tap is off while correcting
+notes, where every tap on the page means "a note goes here".
 
 ## Layout
 
 The page never scrolls. The header and controls stay put, the score or PDF
 scrolls in its own region, and the keyboard is pinned across the bottom so
 the keys to play are always visible no matter how long the piece is. For
-MusicXML the score also scrolls itself to keep the current note in view.
+MusicXML the score also scrolls itself to keep the current note in view, and
+the keyboard strip scrolls sideways to the keys you need on a narrow screen.
 
 ## Practice modes
 
@@ -132,22 +187,42 @@ src/
       pitch.ts          MIDI number -> letter, accidental, octave
       staff.ts          clef assignment and VexFlow-ready note data
       keyboard.ts       piano key geometry, in white-key units
+    pdf/
+      glyphs.ts         a page's drawing operators -> glyphs, lines, strokes
+      staffGeometry.ts  staves, systems and clefs from those lines
+      pdfNotes.ts       noteheads -> pitches, measures, hands
+      edits.ts          your corrections, as changes to the reading
     score/
       types.ts          Score / ScoreEvent — what practice matches against
       fromSteps.ts      cursor steps -> Score (durations, rests, merging)
+      pdfScore.ts       PDF notes -> Score, grouping chords by position
       practiceEngine.ts the practice state machine
       testScores.ts     builders shared by tests and demos
+    training/
+      generator.ts      the nine levels and the exercise generator
+    library/
+      library.ts        scores and corrections kept on the device
     noteState.ts        held keys + sustain pedal, as a pure reducer
   hooks/
     usePianoInput.ts    owns the MIDI connection
-    usePractice.ts      owns the practice session and the tempo clock
+    usePractice.ts      owns a practice session and the tempo clock
+    useTraining.ts      a training exercise, on its own practice session
+    useImmersive.ts     hiding the controls: double-tap and pull-down
   ui/                   React components; drawing only
-    score/osmdAdapter.ts  the only file that knows OSMD's object graph
+    score/osmdAdapter.ts   the only file that knows OSMD's object graph
+    pdf/PdfView.tsx        pages, the reading overlay, correcting notes
+    training/              the exercise sheet (VexFlow) and its controls
+public/
+  manifest.webmanifest, sw.js, icons/   what makes it installable and offline
 ```
 
 The split is the point. `core/` imports nothing from React, the DOM or Vite,
 so every musical decision is testable without a browser — and a different
 shell can reuse it untouched.
+
+Training runs on its **own** practice session, separate from the Practice
+tab's, so a piece you are working on keeps its place while you do a few
+exercises in between.
 
 ### Details worth knowing
 
@@ -184,6 +259,16 @@ holds no capture throws `NotFoundError`, and in `onPointerDown` that throw
 lands before the note is ever played — the key silently does nothing. It is
 called at all so that touch does not capture the pointer and kill glissando.
 
+**Hidden controls use `inert`, not just CSS.** Once the controls slide
+away they must also be out of reach of Tab and screen readers, or a
+keyboard user tabs into buttons they cannot see. React 18 does not know the
+attribute, so it is set on the element directly.
+
+**The saved-scores database is still called `piano-notes`.** It predates the
+rename. The name is invisible to you, but it is what the browser files your
+saved scores under: renaming it would make every score and correction
+already on a device silently vanish.
+
 **No `overflow: hidden` on the score or PDF container.** They sit in a flex
 column; hidden overflow plus flex shrinking clips the document to the height
 of its box, and the rest of the score becomes unreachable rather than
@@ -198,50 +283,46 @@ writes note 71 as B♮ and not C♭.
 APIs; on a Chrome even slightly behind, the second page of a document fails to
 render with an unhelpful error. The legacy build ships the polyfills.
 
-## Growing this into an app
+## Growing this further
 
-The input layer is behind `MidiInputSource` precisely so the two targets you
-have in mind do not need a rewrite:
+The input layer is behind `MidiInputSource`, so other shells do not need a
+rewrite:
 
 - **Desktop (Tauri or Electron).** The Chromium-based webview already supports
   Web MIDI, so `WebMidiInputSource` works as-is. `base: './'` in
   `vite.config.ts` is already set for this.
-- **Android (Capacitor).** Chrome's WebView supports Web MIDI on Android. If a
-  device proves awkward, write a `CapacitorMidiInputSource` against the same
-  interface and pass it to `usePianoInput({ makeSource: () => new … })`.
-  Nothing else changes.
+- **Android, as a store app (Capacitor).** The installable web app already
+  covers Android. If a store build is ever wanted, Chrome's WebView supports
+  Web MIDI too.
 
 iOS needs real work: there is no Web MIDI in any iOS browser or webview, so it
 would need a native CoreMIDI bridge behind the same interface.
 
 ## What has and has not been tested
 
-**Verified:** 138 unit tests — pitch spelling across all 15 major keys against
-all 88 keys, MIDI parsing, the sustain-pedal state machine, staff assignment,
-keyboard geometry, the practice state machine (chords, ties, both modes,
-seeking, lookahead, the chord timing window), score building from cursor
-steps, chord-attempt expiry, and the OSMD adapter's traversal against a
-synthetic OSMD. Plus 46 end-to-end checks in headless Chromium covering both
-app modes, score loading, the cursor/rest mapping, legato advancing, tempo
-mode, keyboard colour precedence, chord timing with real elapsed time, a
-device reporting a useless timestamp, the fixed layout under a long PDF and
-a short window, and real multi-page PDF rendering.
+**Verified:** 266 unit tests — among them pitch spelling across all 15 keys
+and all 88 notes, MIDI parsing, the sustain pedal, the practice state
+machine and its chord window, PDF reading against real Sibelius and
+MuseScore exports, corrections, the device library, and the training
+generator (ranges, stepwise motion, hand changes, accidentals, intervals).
+End-to-end in headless Chromium: all three modes, PDF reading and
+correcting, the library across reloads, offline use through the service
+worker, playing training exercises through (including a simulated MIDI
+piano for the chord timing), and the hide-the-controls gestures at phone
+size. The training sheet was checked with the real VexFlow.
 
-**Not verified:** the two libraries that could not be installed in the
-environment this was built in — **VexFlow** (the free-play grand staff) and
-**OpenSheetMusicDisplay** (the practice-mode engraving). Their call sequences
-were checked against recording stubs and their APIs against published source,
-but the real libraries have never run. Both are wrapped so a failure shows a
-message rather than a blank page:
+**Not verified:** **OpenSheetMusicDisplay** (MusicXML engraving) has only run
+against a recording stub, not the real library, and the touch gestures have
+been simulated rather than tried on a real phone. Rendering failures are
+caught and shown rather than leaving a blank page:
 
-- Staff problems → the error prints under the staff (`ui/GrandStaff.tsx`).
-- Score-reading problems → a "read with N warnings" panel appears listing what
-  the adapter could not find, with the property paths it did resolve. If OSMD
-  has renamed something, that panel says which thing.
+- Staff problems → the error prints under the staff.
+- Score-reading problems → a "read with N warnings" panel lists what the
+  adapter could not find, with the property paths it did resolve.
 
 ## When something does not work
 
-Practice mode has a **"What the app is hearing"** panel under the score. It
+Practice mode has a **"What the app is hearing"** panel in the controls bar. It
 shows the notes the app is waiting for, and the last eight keys it received
 with what it made of each: counted, not in this chord, already had it, or too
 late. Between them those distinguish the three ways this can fail — notes not
@@ -250,8 +331,8 @@ correctly but spread too wide for the chord window.
 
 ## Ideas for later
 
-- Note extraction from notation-software PDFs (see above)
+- Rhythm from PDFs, so play-along works for them too
+- Triads, and both hands at once, as training levels
 - Chord naming from the sounding notes
-- Hand colouring on the keyboard, taken from the staff each note sits on
 - Repeats and da capo handling in the practice cursor
-- Saving progress per piece
+- Exporting and importing your corrections as a backup
