@@ -16,6 +16,7 @@ import {
 } from './core/pdf/edits.ts';
 import { openLibrary, type Library, type ScoreEntry } from './core/library/library.ts';
 import { scoreFromPdfNotes } from './core/score/pdfScore.ts';
+import { toMidiFile, toMusicXml } from './core/score/exportScore.ts';
 import { EMPTY_SCORE } from './core/score/types.ts';
 import type { PdfReadResult } from './core/pdf/pdfNotes.ts';
 import { usePianoInput } from './hooks/usePianoInput.ts';
@@ -356,6 +357,37 @@ export function App() {
     [shownNotes, edits, commitEdits],
   );
 
+  /**
+   * Save the notes as they now stand — corrections included — as a file
+   * something else can read. Rhythm is not read from a PDF, so what goes
+   * out is pitches, chords and barlines, one quarter note per event.
+   */
+  const exportPdfNotes = useCallback(
+    (format: 'midi' | 'musicxml') => {
+      if (!pdfScore || pdfScore.clusters.length === 0) return;
+      const base = (file?.name ?? 'score').replace(/\.[^.]+$/, '');
+      // Cosmetic only — every note carries its own pitch — so the key of
+      // the first staff read is good enough.
+      const fifths = pdfRead?.pages[0]?.staffInfo[0]?.keyFifths ?? 0;
+      const options = { title: base, fifths };
+      const [data, type, extension] =
+        format === 'midi'
+          ? ([toMidiFile(pdfScore.clusters, options), 'audio/midi', 'mid'] as const)
+          : ([toMusicXml(pdfScore.clusters, options), 'application/vnd.recordare.musicxml+xml', 'musicxml'] as const);
+      const url = URL.createObjectURL(new Blob([data as BlobPart], { type }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${base}.${extension}`;
+      document.body.append(link);
+      link.click();
+      link.remove();
+      // Revoked on a later tick: Safari has not finished with the URL when
+      // click() returns.
+      setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    },
+    [pdfScore, file?.name, pdfRead],
+  );
+
   const handleScoreLoaded = useCallback(
     (loaded: LoadedScore) => {
       setScore(loaded.score);
@@ -606,7 +638,23 @@ export function App() {
                           </button>
                         </>
                       )}
-                      <span className="toolbar__inline-note">
+                      <button
+                      type="button"
+                      className="button"
+                      onClick={() => exportPdfNotes('midi')}
+                      title="The notes as read, corrections included, as a MIDI file"
+                    >
+                      Save MIDI
+                    </button>
+                    <button
+                      type="button"
+                      className="button"
+                      onClick={() => exportPdfNotes('musicxml')}
+                      title="The notes as read, corrections included, as a MusicXML file for a notation editor"
+                    >
+                      Save MusicXML
+                    </button>
+                    <span className="toolbar__inline-note">
                         {editing
                           ? 'Tap a marker to fix it, or tap a staff where a note was missed to add it. On a keyboard: ↑↓ semitone, Shift+↑↓ octave, H hand, Delete, Esc.'
                           : `${shownNotes.length} notes over ${pdfRead.diagnostics.measures} measures · ${

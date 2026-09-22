@@ -32,6 +32,11 @@ export interface PdfScore {
   readonly score: Score;
   /** One entry per event, in the same order. */
   readonly anchors: readonly PdfAnchor[];
+  /**
+   * The notes behind each event, in the same order — with their written
+   * spelling, which the score itself does not carry. Used by the export.
+   */
+  readonly clusters: readonly (readonly PdfNote[])[];
 }
 
 export interface PdfScoreOptions {
@@ -102,5 +107,6 @@ export function scoreFromPdfNotes(
   return {
     score: { title, events, tempoBpm: null, measureCount: measures, source: 'pdf' },
     anchors,
+    clusters,
   };
 }

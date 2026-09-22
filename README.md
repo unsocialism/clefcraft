@@ -75,6 +75,12 @@ it read. A wrong note is obvious at a glance. *Correct notes* lets you:
 Corrections are stored as changes to the reading, not as an edited copy, and
 are saved as you make them.
 
+**Taking the notes out.** *Save MIDI* and *Save MusicXML* write the reading,
+corrections included, to a file. Rhythm is not read from a PDF, so every
+event becomes one quarter note and a measure lasts as many quarters as it
+has events: pitches, chords, hands and barlines are right, note lengths are
+not. MusicXML opens in MuseScore, where the rhythm can be set by hand.
+
 ## Training
 
 Each exercise is four bars of quarter notes. Notes move mostly by step,
@@ -299,7 +305,7 @@ would need a native CoreMIDI bridge behind the same interface.
 
 ## What has and has not been tested
 
-**Verified:** 286 unit tests — among them pitch spelling across all 15 keys
+**Verified:** 296 unit tests — among them pitch spelling across all 15 keys
 and all 88 notes, MIDI parsing, the sustain pedal, the practice state
 machine and its chord window, PDF reading against real Sibelius and
 MuseScore exports, corrections, the device library, and the training
