@@ -229,6 +229,48 @@ describe('grouping rules into staves', () => {
     assert.equal(staves[0]!.lineYs[0], 91.69);
   });
 
+  it('picks the staff when beams above it line up with its own grid', () => {
+    // From a real MuseScore export: two beams sit a space and two spaces
+    // above the bass staff, evenly spaced with it, so five runs of five
+    // start within a space of each other. Only one is made of full-width
+    // rules.
+    const beams = [683.34, 680.86, 678.38, 675.9].map((y) => ({ y, x0: 192, x1: 239 }));
+    const staff = [673.42, 668.46, 663.5, 658.54, 653.58];
+    const input = [...beams, ...rules(staff)];
+    const staves = groupStaffLines(input);
+    assert.equal(staves.length, 1);
+    assert.deepEqual(staves[0]!.lineYs, staff);
+  });
+
+  it('reads a clean page exactly, whatever its spacing and margins', () => {
+    // The plain case must stay plain: no intruders, so every staff is found
+    // with its own five lines and nothing shifted. Checked across a range
+    // of spacings, staff counts and page offsets rather than one fixture.
+    for (const spacing of [3.75, 4.6, 4.96, 5, 6.4]) {
+      for (const staffCount of [2, 6, 14]) {
+        for (const top of [700, 748.65, 812.3]) {
+          const expected: number[][] = [];
+          const input: { y: number; x0: number; x1: number }[] = [];
+          let y = top;
+          for (let s = 0; s < staffCount; s++) {
+            const lines = [0, 1, 2, 3, 4].map((l) => +(y - l * spacing).toFixed(3));
+            expected.push(lines);
+            input.push(...rules(lines));
+            // Alternating gaps: the two staves of a system sit closer
+            // together than one system does to the next.
+            y -= 4 * spacing + (s % 2 === 0 ? spacing * 5.4 : spacing * 7.1);
+          }
+          const staves = groupStaffLines(input);
+          assert.deepEqual(
+            staves.map((st) => st.lineYs),
+            expected,
+            `spacing ${spacing}, ${staffCount} staves from ${top}`,
+          );
+        }
+      }
+    }
+  });
+
   it('returns nothing for no rules', () => {
     assert.deepEqual(groupStaffLines([]), []);
   });

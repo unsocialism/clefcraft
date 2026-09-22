@@ -136,18 +136,18 @@ function scanForStaves(
   const staves: Staff[] = [];
   let i = 0;
   while (i + 4 < sorted.length) {
-    const picked = fiveFrom(i);
+    // Beams above a staff can be evenly spaced with it — they are drawn at
+    // the same pitch as the staff lines — so several runs of five can start
+    // within a space or two of each other and only one of them is the
+    // staff. Staff lines run the width of the system and beams are short,
+    // so the run whose shortest rule is longest wins.
+    let picked: number[] | null = null;
+    for (let k = i; k < sorted.length && sorted[i]!.y - sorted[k]!.y <= spacing * 2.5; k++) {
+      const run = fiveFrom(k);
+      if (run && (!picked || shortest(run) > shortest(picked))) picked = run;
+    }
     if (!picked) {
       i += 1;
-      continue;
-    }
-    // A beam lying exactly one space above a staff makes six evenly spaced
-    // rules, and the top five are not the staff. Staff lines run the full
-    // width of the system and a beam does not, so when the run one line
-    // further down is made of longer rules, that one is the staff.
-    const lower = fiveFrom(picked[1]!);
-    if (lower && shortest(lower) > shortest(picked) + spacing) {
-      i = picked[1]!;
       continue;
     }
     const group = picked.map((k) => sorted[k]!);
