@@ -97,6 +97,12 @@ export interface PdfPageLayout {
   readonly staffInfo: readonly StaffInfo[];
 }
 
+export interface KeyChange {
+  readonly x: number;
+  readonly key: Readonly<Partial<Record<WrittenPitch['step'], -1 | 0 | 1>>>;
+  readonly fifths: number;
+}
+
 export interface StaffInfo {
   readonly staff: Staff;
   /** 0-based system index across the document. */
@@ -108,6 +114,11 @@ export interface StaffInfo {
   readonly key: Readonly<Partial<Record<WrittenPitch['step'], -1 | 0 | 1>>>;
   /** Sharps positive, flats negative — for spelling a changed note. */
   readonly keyFifths: number;
+  /**
+   * Key signatures that change part-way along the staff, left to right,
+   * each in force from its x. The start-of-line key is `key` above.
+   */
+  readonly keyChanges?: readonly KeyChange[];
   readonly barlines: readonly number[];
   /** Measures before this system starts. */
   readonly measureBase: number;
@@ -147,6 +158,21 @@ export const FONT_PROFILES: readonly FontProfile[] = [
     noteheads: new Set(['œ', '˙']),
     clefs: { '&': 'treble', '?': 'bass' },
     accidentals: { b: -1, n: 0, '#': 1 },
+  },  {
+    name: 'MScore',
+    // MuseScore 2's own font, from before it switched to SMuFL, with its
+    // glyphs in a different stretch of the private-use area. Read off the
+    // outlines embedded in a real MuseScore 2 export, not guessed: U+E12D
+    // is the filled notehead, U+E12C the half, U+E19E and U+E19C the treble
+    // and bass clefs, U+E10E/E113/E114 sharp, natural and flat.
+    //
+    // Two are inferred from the font's layout rather than seen in a file:
+    // U+E12B, the whole notehead, sits just before the half; U+E19F and
+    // U+E19D are the small clefs used for a clef change mid-staff, each
+    // just after its full-size one.
+    noteheads: new Set(['\ue12d', '\ue12c', '\ue12b']),
+    clefs: { '\ue19e': 'treble', '\ue19f': 'treble', '\ue19c': 'bass', '\ue19d': 'bass' },
+    accidentals: { '\ue114': -1, '\ue113': 0, '\ue10e': 1 },
   },
 ];
 
@@ -217,6 +243,71 @@ export function keySignatureOn(
     alters.set(pitchAt(glyph.y, staff, clef).step, alter);
   }
   return alters;
+}
+
+/**
+ * Key signatures that change part-way along a staff.
+ *
+ * A new key is written straight after a barline, before the next note: a
+ * row of sharps, flats or naturals that belong to no notehead. That last
+ * part is what tells it from an ordinary accidental, which sits directly
+ * to the left of its own note at the same height. Without this, a key
+ * change in the middle of a line went unread until the next line, whose
+ * opening key signature shows it again — and every note in between came
+ * out a semitone wrong.
+ */
+export function keyChangesOn(
+  staff: Staff,
+  glyphs: readonly Glyph[],
+  profile: FontProfile,
+  clefs: readonly ClefChange[],
+  barlines: readonly number[],
+): KeyChange[] {
+  const middle = (topY(staff) + bottomY(staff)) / 2;
+  const onStaff = (g: Glyph) =>
+    g.x >= staff.x0 - 2 && g.x <= staff.x1 + 2 && Math.abs(g.y - middle) < staff.spacing * 8;
+  const heads = glyphs.filter((g) => profile.noteheads.has(g.ch) && onStaff(g));
+  const accidentals = glyphs.filter(
+    (g) => profile.accidentals[g.ch] !== undefined && onStaff(g) && Math.abs(g.y - middle) <= staff.spacing * 4,
+  );
+  const attached = (a: Glyph) =>
+    heads.some(
+      (h) =>
+        Math.abs(h.y - a.y) <= staff.spacing * 0.4 &&
+        h.x - a.x > 0.5 &&
+        h.x - a.x < staff.spacing * 3.2,
+    );
+
+  const changes: KeyChange[] = [];
+  for (const bar of barlines) {
+    // The line's opening key is read by keySignatureOn.
+    if (bar <= staff.x0 + 2) continue;
+    const firstHead = Math.min(...heads.filter((h) => h.x > bar).map((h) => h.x), Infinity);
+    const row = accidentals
+      .filter((a) => a.x > bar && a.x < firstHead && !attached(a))
+      .sort((a, b) => a.x - b.x);
+    // A key signature starts right after the barline and runs on without
+    // gaps; anything further along is something else.
+    const signature: Glyph[] = [];
+    let reach = bar + staff.spacing * 2.5;
+    for (const a of row) {
+      if (a.x > reach) break;
+      signature.push(a);
+      reach = a.x + staff.spacing * 2;
+    }
+    if (signature.length === 0) continue;
+    const clef = clefAt(clefs, signature[0]!.x);
+    if (!clef) continue;
+    const key: Partial<Record<WrittenPitch['step'], -1 | 0 | 1>> = {};
+    let fifths = 0;
+    for (const a of signature) {
+      const alter = profile.accidentals[a.ch]!;
+      key[pitchAt(a.y, staff, clef).step] = alter;
+      fifths += alter;
+    }
+    changes.push({ x: bar, key, fifths });
+  }
+  return changes;
 }
 
 /**
@@ -386,6 +477,12 @@ export async function readPdfNotes(doc: ReadPdfOptions): Promise<PdfReadResult> 
     const keyOf = new Map(
       staves.map((s) => [s, keySignatureOn(s, ink.glyphs, profile, clefsOf.get(s)!)]),
     );
+    const keyChangesOf = new Map(
+      staves.map((s) => [
+        s,
+        keyChangesOn(s, ink.glyphs, profile, clefsOf.get(s)!, barlinesOf.get(s) ?? []),
+      ]),
+    );
 
     const staffNumber = new Map<Staff, number>();
     const systemIndexOf = new Map<Staff, number>();
@@ -419,7 +516,16 @@ export async function readPdfNotes(doc: ReadPdfOptions): Promise<PdfReadResult> 
       list.sort((a, b) => a.x - b.x);
       const bars = barlinesOf.get(staff)!;
       const clefs = clefsOf.get(staff)!;
-      const key = keyOf.get(staff)!;
+      const startKey = keyOf.get(staff)!;
+      const keyChanges = keyChangesOf.get(staff)!;
+      // The key in force at x: the latest change at or before it. A key
+      // change replaces the whole signature, so letters it does not name
+      // go back to natural.
+      const keyAt = (x: number): ReadonlyMap<WrittenPitch['step'], -1 | 0 | 1> => {
+        let change: KeyChange | undefined;
+        for (const c of keyChanges) if (c.x <= x) change = c;
+        return change ? new Map(Object.entries(change.key) as [WrittenPitch['step'], -1 | 0 | 1][]) : startKey;
+      };
       let measure = -1;
       let state = new Map<string, -1 | 0 | 1>();
 
@@ -438,7 +544,7 @@ export async function readPdfNotes(doc: ReadPdfOptions): Promise<PdfReadResult> 
         const error = positionError(head.y, staff);
         if (error > 0.25) offGrid++;
         const written = pitchAt(head.y, staff, clef);
-        const alter = alterFor(head, staff, ink.glyphs, profile, state, key, written);
+        const alter = alterFor(head, staff, ink.glyphs, profile, state, keyAt(head.x), written);
         const pitch: WrittenPitch = { ...written, alter };
         notes.push({
           page,
@@ -472,6 +578,7 @@ export async function readPdfNotes(doc: ReadPdfOptions): Promise<PdfReadResult> 
           clefs: clefsOf.get(staff)!,
           key: Object.fromEntries(key),
           keyFifths: fifths,
+          keyChanges: keyChangesOf.get(staff)!,
           barlines: barlinesOf.get(staff)!,
           measureBase: measureBaseOf.get(staff) ?? 0,
         };

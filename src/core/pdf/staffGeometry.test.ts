@@ -195,6 +195,40 @@ describe('grouping rules into staves', () => {
     assert.equal(staves[0]!.lineYs[0], 705.7);
   });
 
+  it('steps over a flat beam lying between two staff lines', () => {
+    // MuseScore draws a flat beam as a long rule, here between lines 2 and 3.
+    const input = [...rules([640.78, 635.78, 630.78, 625.78, 620.78]), { y: 633.28, x0: 388, x1: 570 }];
+    const staves = groupStaffLines(input);
+    assert.equal(staves.length, 1);
+    assert.deepEqual(staves[0]!.lineYs, [640.78, 635.78, 630.78, 625.78, 620.78]);
+  });
+
+  it('finds the staves on a page crowded with beam rules', () => {
+    // Beams drawn as bundles of short rules a point or two apart outnumber
+    // the gaps between staff lines, so the commonest gap is a beam's.
+    const input = [
+      ...rules([748.65, 743.65, 738.65, 733.65, 728.65]),
+      ...[685.9, 683.4, 682.15].map((y) => ({ y, x0: 77, x1: 567 })),
+      ...rules([679.65, 674.65, 669.65, 664.65, 659.65]),
+      ...[537.66, 535.16, 533.91, 531.41, 507.66, 505.16, 503.91, 501.41].map((y) => ({ y, x0: 113, x1: 179 })),
+      ...rules([601.66, 596.66, 591.66, 586.66, 581.66]),
+      ...rules([532.66, 527.66, 522.66, 517.66, 512.66]),
+    ];
+    const staves = groupStaffLines(input);
+    assert.deepEqual(
+      staves.map((s) => s.lineYs[0]),
+      [748.65, 679.65, 601.66, 532.66],
+    );
+  });
+
+  it('does not take a beam one space above a staff for its top line', () => {
+    // Six evenly spaced rules; the top one is a short beam, not a staff line.
+    const input = [{ y: 96.69, x0: 126, x1: 190 }, ...rules([91.69, 86.69, 81.69, 76.69, 71.69])];
+    const staves = groupStaffLines(input);
+    assert.equal(staves.length, 1);
+    assert.equal(staves[0]!.lineYs[0], 91.69);
+  });
+
   it('returns nothing for no rules', () => {
     assert.deepEqual(groupStaffLines([]), []);
   });

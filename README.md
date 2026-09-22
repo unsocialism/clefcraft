@@ -48,9 +48,11 @@ noteheads are font glyphs with exact coordinates, and its staff lines are
 drawn paths. So reading one is geometry, not image recognition. The reader
 walks the page's drawing operators (`core/pdf/glyphs.ts`), finds the staves
 and barlines, and turns each notehead's height on the staff into a pitch,
-using the clef and key signature it finds (`core/pdf/pdfNotes.ts`). Sibelius's
-Opus font and the standard SMuFL fonts (MuseScore's Leland, Bravura) are
-both mapped.
+using the clef and key signature it finds (`core/pdf/pdfNotes.ts`). Three music
+fonts are mapped: Sibelius's Opus, the standard SMuFL fonts (MuseScore 3
+and 4's Leland, Bravura), and the MScore font of MuseScore 2. Key changes
+part-way along a line are read, and flat beams — which some exports draw
+as long lines inside the staff — are not mistaken for staff lines.
 
 Measured on the two files it was built against: a MuseScore export read
 434 of 434 notes and 95 of 95 measures correctly; a Sibelius export gives
@@ -297,7 +299,7 @@ would need a native CoreMIDI bridge behind the same interface.
 
 ## What has and has not been tested
 
-**Verified:** 279 unit tests — among them pitch spelling across all 15 keys
+**Verified:** 286 unit tests — among them pitch spelling across all 15 keys
 and all 88 notes, MIDI parsing, the sustain pedal, the practice state
 machine and its chord window, PDF reading against real Sibelius and
 MuseScore exports, corrections, the device library, and the training

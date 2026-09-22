@@ -224,7 +224,10 @@ export function noteAtPoint(
   const steps = stepsAboveBottomLine(y, staff);
   const snappedY = bottomY(staff) + steps * (staff.spacing / 2);
   const written = pitchAt(snappedY, staff, clef);
-  const alter = best.key[written.step] ?? 0;
+  // The key in force where the tap landed, allowing for a key change
+  // earlier on the line.
+  const change = [...(best.keyChanges ?? [])].reverse().find((c) => c.x <= x);
+  const alter = (change ? change.key : best.key)[written.step] ?? 0;
   const pitch: WrittenPitch = { ...written, alter };
 
   return {

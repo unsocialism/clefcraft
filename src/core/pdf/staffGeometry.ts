@@ -69,50 +69,95 @@ export function bottomLineIndex(clef: Clef): number {
  */
 export function groupStaffLines(
   rules: readonly { y: number; x0: number; x1: number }[],
-  tolerance = 0.25,
+  tolerance = 0.1,
 ): Staff[] {
   if (rules.length < 5) return [];
 
   // Top of page first: PDF Y decreases downward.
   const sorted = [...rules].sort((a, b) => b.y - a.y);
 
-  // The staff line spacing is the most common small gap on the page. Taking
-  // the median of the small gaps rather than the minimum keeps one stray
-  // rule from setting the scale for everything.
+  // The staff line spacing. Not simply the commonest small gap: on a page
+  // full of beams, which MuseScore draws as bundles of thin horizontal
+  // rules a point or two apart, the commonest gap is a beam's, and taking
+  // it finds no staff at all. Each candidate gap is tried instead, and the
+  // one that assembles the most staves wins — on a tie the wider, since
+  // beam fragments are always tighter than staff lines.
   const gaps: number[] = [];
   for (let i = 1; i < sorted.length; i++) gaps.push(sorted[i - 1]!.y - sorted[i]!.y);
-  const small = gaps.filter((g) => g > 0.2).sort((a, b) => a - b);
-  const spacing = small[Math.floor(small.length * 0.4)] ?? 0;
-  if (spacing <= 0) return [];
+  const candidates = [...new Set(gaps.filter((g) => g > 0.2).map((g) => Math.round(g * 20) / 20))];
+  let best: Staff[] = [];
+  let bestSpacing = 0;
+  for (const spacing of candidates) {
+    const found = scanForStaves(sorted, spacing, tolerance);
+    if (found.length > best.length || (found.length === best.length && found.length > 0 && spacing > bestSpacing)) {
+      best = found;
+      bestSpacing = spacing;
+    }
+  }
+  return best;
+}
 
+function scanForStaves(
+  sorted: readonly { y: number; x0: number; x1: number }[],
+  spacing: number,
+  tolerance: number,
+): Staff[] {
   // Scan for runs of exactly five evenly spaced rules. A rule that does not
   // start such a run is skipped rather than absorbed: pages carry long
   // horizontal rules that are not staff lines — 8va brackets, dashes,
   // hairpins — and letting one into a group shifts every staff after it,
   // which silently moves every pitch on them.
+  //
+  // A rule can also sit *between* two lines of a staff: a flat beam across
+  // a run of repeated notes is a long horizontal bar half-way between two
+  // staff lines. It is stepped over, not counted, so the staff is still
+  // found. (MuseScore draws a flat beam as exactly such a rule; before
+  // this, every staff with one lost its notes.)
+  // Five evenly spaced rules starting at `from`, stepping over intruders,
+  // or null if there are none.
+  const fiveFrom = (from: number): number[] | null => {
+    const picked = [from];
+    let j = from + 1;
+    while (picked.length < 5 && j < sorted.length) {
+      const gap = sorted[picked[picked.length - 1]!]!.y - sorted[j]!.y;
+      if (Math.abs(gap - spacing) <= spacing * tolerance) {
+        picked.push(j);
+      } else if (gap > spacing * (1 + tolerance)) {
+        break; // past where the next line should be: no staff starts here
+      }
+      // Otherwise it is closer than a line would be — an intruder; step over.
+      j += 1;
+    }
+    return picked.length === 5 ? picked : null;
+  };
+  const shortest = (picked: readonly number[]) =>
+    Math.min(...picked.map((k) => sorted[k]!.x1 - sorted[k]!.x0));
+
   const staves: Staff[] = [];
   let i = 0;
   while (i + 4 < sorted.length) {
-    let ok = true;
-    for (let k = 1; k < 5; k++) {
-      const gap = sorted[i + k - 1]!.y - sorted[i + k]!.y;
-      if (Math.abs(gap - spacing) > spacing * tolerance) {
-        ok = false;
-        break;
-      }
-    }
-    if (!ok) {
+    const picked = fiveFrom(i);
+    if (!picked) {
       i += 1;
       continue;
     }
-    const group = sorted.slice(i, i + 5);
+    // A beam lying exactly one space above a staff makes six evenly spaced
+    // rules, and the top five are not the staff. Staff lines run the full
+    // width of the system and a beam does not, so when the run one line
+    // further down is made of longer rules, that one is the staff.
+    const lower = fiveFrom(picked[1]!);
+    if (lower && shortest(lower) > shortest(picked) + spacing) {
+      i = picked[1]!;
+      continue;
+    }
+    const group = picked.map((k) => sorted[k]!);
     staves.push({
       lineYs: group.map((r) => r.y),
       spacing: (group[0]!.y - group[4]!.y) / 4,
       x0: Math.min(...group.map((r) => r.x0)),
       x1: Math.max(...group.map((r) => r.x1)),
     });
-    i += 5;
+    i = picked[4]! + 1;
   }
 
   return staves;

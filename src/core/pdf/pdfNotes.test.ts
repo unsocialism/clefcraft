@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { chooseFontProfile, chooseStaff, FONT_PROFILES } from './pdfNotes.ts';
+import { chooseFontProfile, chooseStaff, FONT_PROFILES, keyChangesOn } from './pdfNotes.ts';
 import type { Glyph } from './glyphs.ts';
 import type { Staff } from './staffGeometry.ts';
 
@@ -68,6 +68,17 @@ describe('choosing a font profile', () => {
     assert.equal(chooseFontProfile(smufl).profile.name, 'SMuFL');
   });
 
+  it('recognises MuseScore 2\'s own MScore font', () => {
+    // From a real MuseScore 2 export: filled and half noteheads.
+    const mscore = [glyph('\ue12d'), glyph('\ue12d'), glyph('\ue12c'), glyph('\ue19e')];
+    const picked = chooseFontProfile(mscore);
+    assert.equal(picked.profile.name, 'MScore');
+    assert.equal(picked.noteheads, 3);
+    assert.equal(picked.profile.clefs['\ue19e'], 'treble');
+    assert.equal(picked.profile.clefs['\ue19c'], 'bass');
+    assert.equal(picked.profile.accidentals['\ue114'], -1);
+  });
+
   it('reports zero when the page has no recognisable noteheads', () => {
     // A scan, or a font neither profile knows.
     assert.equal(chooseFontProfile([glyph('x'), glyph('y')]).noteheads, 0);
@@ -79,5 +90,39 @@ describe('choosing a font profile', () => {
     // a note and appears about as often, which is what makes it tempting.
     assert.ok(opus.noteheads.has('˙'));
     assert.ok(!opus.noteheads.has('™'));
+  });
+});
+
+describe('key changes part-way along a staff', () => {
+  const MSCORE = FONT_PROFILES.find((p) => p.name === 'MScore')!;
+  const staff = staffFrom(700, 5);
+  const bottom = 700 - 4 * 5;
+  // y of a treble-clef staff position: 0 = bottom line (E4), 1 = F4, …
+  const at = (step: number) => bottom + step * 2.5;
+  const g = (ch: string, x: number, y: number): Glyph => ({ ch, x, y, size: 20, advance: 6 });
+  const FLAT = '\ue114';
+  const SHARP = '\ue10e';
+  const HEAD = '\ue12d';
+  const clefs = [{ x: 50, clef: 'treble' as const }];
+
+  it('reads a new key written right after a barline', () => {
+    // Barline at 300, then B♭ and E♭ (middle line and top space), then notes.
+    const glyphs = [g(FLAT, 304, at(4)), g(FLAT, 310, at(7)), g(HEAD, 330, at(2)), g(HEAD, 350, at(3))];
+    const changes = keyChangesOn(staff, glyphs, MSCORE, clefs, [46, 300, 559]);
+    assert.equal(changes.length, 1);
+    assert.equal(changes[0]!.x, 300);
+    assert.deepEqual(changes[0]!.key, { B: -1, E: -1 });
+    assert.equal(changes[0]!.fifths, -2);
+  });
+
+  it('does not mistake a note\'s own accidental after a barline for a key change', () => {
+    // A sharp directly before its notehead, at the same height.
+    const glyphs = [g(SHARP, 304, at(1)), g(HEAD, 312, at(1))];
+    assert.deepEqual(keyChangesOn(staff, glyphs, MSCORE, clefs, [46, 300, 559]), []);
+  });
+
+  it('leaves the opening key signature of the line to keySignatureOn', () => {
+    const glyphs = [g(FLAT, 60, at(4)), g(HEAD, 90, at(2))];
+    assert.deepEqual(keyChangesOn(staff, glyphs, MSCORE, clefs, [46, 559]), []);
   });
 });
