@@ -15,6 +15,8 @@ import {
   type NoteEdits,
 } from './core/pdf/edits.ts';
 import { openLibrary, type Library, type ScoreEntry } from './core/library/library.ts';
+import { MidiFileError, parseMidiFile } from './core/midi/midiFile.ts';
+import { scoreFromMidi, type MidiScore } from './core/score/midiScore.ts';
 import { scoreFromPdfNotes } from './core/score/pdfScore.ts';
 import { toMidiFile, toMusicXml } from './core/score/exportScore.ts';
 import { EMPTY_SCORE } from './core/score/types.ts';
@@ -32,6 +34,7 @@ import { PracticeControls } from './ui/practice/PracticeControls.tsx';
 import { MidiMonitor } from './ui/practice/MidiMonitor.tsx';
 import { ScoreLibrary } from './ui/practice/ScoreLibrary.tsx';
 import { ScoreLoader, type LoadedFile } from './ui/practice/ScoreLoader.tsx';
+import { MidiSheet } from './ui/score/MidiSheet.tsx';
 import { ScoreView, type LoadedScore } from './ui/score/ScoreView.tsx';
 import { TrainingControls, TrainingSummary } from './ui/training/TrainingControls.tsx';
 import { TrainingSheet } from './ui/training/TrainingSheet.tsx';
@@ -72,6 +75,13 @@ export function App() {
   const [showOverlay, setShowOverlay] = useState(true);
   const [showPitches, setShowPitches] = useState(false);
   const [pdfRead, setPdfRead] = useState<PdfReadResult | null>(null);
+  // A MIDI file, read and engraved. Unlike a PDF it carries real rhythm,
+  // so play-along works from it.
+  const [midiScore, setMidiScore] = useState<MidiScore | null>(null);
+  // Where the hands part when the file itself does not say. Changing it
+  // re-reads the file, which is cheap and keeps everything in step.
+  const [midiSplit, setMidiSplit] = useState(60);
+  const [midiData, setMidiData] = useState<ArrayBuffer | null>(null);
 
   // Corrections to the PDF reading, with an undo history. Kept as changes
   // against the reading rather than an edited copy — see core/pdf/edits.ts.
@@ -192,8 +202,28 @@ export function App() {
 
       setLoadError(null);
       setDiagnostics(null);
+      setMidiScore(null);
       setFile(loaded);
       setFileId(id);
+      if (loaded.kind === 'midi') {
+        try {
+          const data = loaded.content as ArrayBuffer;
+          const read = scoreFromMidi(parseMidiFile(data), {
+            title: loaded.name.replace(/\.[^.]+$/, ''),
+            splitPoint: midiSplit,
+          });
+          setMidiData(data);
+          setMidiScore(read);
+          setScore(read.score);
+        } catch (cause) {
+          setScore(EMPTY_SCORE);
+          setLoadError(
+            cause instanceof MidiFileError
+              ? cause.message
+              : `${loaded.name} could not be read: ${cause instanceof Error ? cause.message : String(cause)}`,
+          );
+        }
+      }
       if (loaded.kind === 'pdf') {
         // Cleared rather than left pointing at the previous score; the
         // reader fills it back in once the pages have been parsed.
@@ -206,7 +236,26 @@ export function App() {
       }
       setAppMode('practice');
     },
-    [library, refreshEntries, setScore],
+    [library, refreshEntries, setScore, midiSplit],
+  );
+
+  /** Re-read the open MIDI file with the hands split somewhere else. */
+  const changeMidiSplit = useCallback(
+    (splitPoint: number) => {
+      setMidiSplit(splitPoint);
+      if (!midiData || file?.kind !== 'midi') return;
+      try {
+        const read = scoreFromMidi(parseMidiFile(midiData), {
+          title: file.name.replace(/\.[^.]+$/, ''),
+          splitPoint,
+        });
+        setMidiScore(read);
+        setScore(read.score, { keepPosition: true });
+      } catch {
+        // The file already read once; a different split cannot break it.
+      }
+    },
+    [midiData, file, setScore],
   );
 
   const handleFile = useCallback((loaded: LoadedFile) => void openFile(loaded), [openFile]);
@@ -224,7 +273,7 @@ export function App() {
       // bytes, a compressed .mxl as a Blob for OSMD to unzip, plain MusicXML
       // as text.
       const content =
-        entry.kind === 'pdf'
+        entry.kind === 'pdf' || entry.kind === 'midi'
           ? await stored.data.arrayBuffer()
           : entry.name.toLowerCase().endsWith('.mxl')
             ? stored.data
@@ -239,6 +288,8 @@ export function App() {
     setFileId(null);
     setScore(EMPTY_SCORE);
     setPdfRead(null);
+    setMidiScore(null);
+    setMidiData(null);
     setDiagnostics(null);
     setEditing(false);
     setSelectedNoteId(null);
@@ -573,6 +624,37 @@ export function App() {
                 />
               )}
 
+              {file?.kind === 'midi' && midiScore && (
+                <div className="toolbar toolbar--compact">
+                  <span className="toolbar__inline-note">
+                    {midiScore.score.events.length} note
+                    {midiScore.score.events.length === 1 ? '' : 's'} over {midiScore.measures.length}{' '}
+                    bar{midiScore.measures.length === 1 ? '' : 's'}
+                    {midiScore.score.tempoBpm ? ` · ${midiScore.score.tempoBpm} bpm in the file` : ''}
+                    {midiScore.handsFrom === 'split'
+                      ? ' · hands split by pitch'
+                      : ` · hands from the file's ${midiScore.handsFrom}`}
+                    . Timing is rounded to the nearest sixteenth, and each hand is written as one
+                    line of rhythm.
+                  </span>
+                  {midiScore.handsFrom === 'split' && (
+                    <label className="toolbar__field">
+                      <span>Left hand below</span>
+                      <select
+                        value={midiSplit}
+                        onChange={(event) => changeMidiSplit(Number(event.target.value))}
+                      >
+                        {[36, 48, 60, 72].map((midi) => (
+                          <option key={midi} value={midi}>
+                            C{midi / 12 - 1}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
+                </div>
+              )}
+
               {file?.kind === 'pdf' && (
                 <div className="toolbar toolbar--compact">
                   <label className="toolbar__field">
@@ -718,6 +800,14 @@ export function App() {
           </>
         ) : (
           <>
+            {file?.kind === 'midi' && midiScore && (
+              <MidiSheet
+                midiScore={midiScore}
+                currentEvent={practice.state.finished ? null : practice.state.index}
+                follow
+              />
+            )}
+
             {file?.kind === 'musicxml' && (
               <ScoreView
                 content={file.content as string | Blob}

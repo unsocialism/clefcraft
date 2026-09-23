@@ -11,7 +11,7 @@ browser and installs on a phone like an app; see [DEPLOY.md](DEPLOY.md).
 ## Three modes:
 
 - **Free play** — play anything; see the note names and a live grand staff.
-- **Practice** — open a MusicXML file or a PDF. The keyboard lights the keys
+- **Practice** — open a MusicXML file, a PDF or a MIDI file. The keyboard lights the keys
   for the next notes, blue for the right hand and orange for the left, with
   the two after that shown faintly so you can prepare your hand.
 - **Training** — generated sight-reading exercises on a ladder of thirteen
@@ -34,6 +34,7 @@ USB, and allow MIDI access when the browser asks.
 | `.mxl` (compressed MusicXML) | Same | **Yes** |
 | `.pdf` from notation software | The PDF itself, with what was read marked on it | **Yes** — read from the page, correctable |
 | `.pdf` scanned from paper | The PDF itself | No |
+| `.mid`, `.midi` | Engraved by clefcraft itself | **Yes** — with real rhythm |
 
 Every score you open is **kept on the device** (IndexedDB), with any
 corrections you made to it, and listed under *Your scores* for next time.
@@ -80,6 +81,30 @@ corrections included, to a file. Rhythm is not read from a PDF, so every
 event becomes one quarter note and a measure lasts as many quarters as it
 has events: pitches, chords, hands and barlines are right, note lengths are
 not. MusicXML opens in MuseScore, where the rhythm can be set by hand.
+
+### MIDI files
+
+A MIDI file states exactly when every note starts and stops, so it is the
+one source where *play along* works from the piece's own rhythm. What it
+does not state is how the music is written, so clefcraft engraves it
+(`core/score/midiScore.ts`, drawn by `ui/score/MidiSheet.tsx`) and makes
+three decisions on the way:
+
+- **Timing is rounded to the nearest sixteenth.** A performance played in by
+  hand has no exact durations; taken literally, every bar would be a thicket
+  of dotted sixty-fourths.
+- **Each hand is written as one line of rhythm.** Notes starting together
+  become a chord, and a held note is cut short when that hand plays again.
+  Real piano writing has two or three voices per staff; separating them
+  reliably is a research problem, not a rounding decision.
+- **The hands come from the file** when it has two tracks or two channels —
+  the lower one is the left. Otherwise they are split by pitch, at middle C
+  by default, with a control to move the split.
+
+A note crossing a barline is split and tied, the key signature and time
+signatures are taken from the file, and percussion (channel 10) is left out.
+So the notation is a fair reading of the performance rather than a
+reconstruction of the original score; the pitches and their order are exact.
 
 ## Training
 
@@ -186,6 +211,7 @@ src/
       types.ts          the MidiInputSource interface and error types
       parse.ts          raw MIDI bytes -> events
       webMidiSource.ts  Web MIDI implementation
+      midiFile.ts       reading a standard MIDI file
       mockSource.ts     in-memory implementation for tests
     music/
       keySignature.ts   the 15 major keys and their accidentals
@@ -201,6 +227,8 @@ src/
       types.ts          Score / ScoreEvent — what practice matches against
       fromSteps.ts      cursor steps -> Score (durations, rests, merging)
       pdfScore.ts       PDF notes -> Score, grouping chords by position
+      midiScore.ts      a MIDI file -> rhythm, hands, bars and engraving
+      exportScore.ts    a reading -> a MIDI or MusicXML file
       practiceEngine.ts the practice state machine
       testScores.ts     builders shared by tests and demos
     training/
@@ -305,7 +333,7 @@ would need a native CoreMIDI bridge behind the same interface.
 
 ## What has and has not been tested
 
-**Verified:** 296 unit tests — among them pitch spelling across all 15 keys
+**Verified:** 324 unit tests — among them pitch spelling across all 15 keys
 and all 88 notes, MIDI parsing, the sustain pedal, the practice state
 machine and its chord window, PDF reading against real Sibelius and
 MuseScore exports, corrections, the device library, and the training
@@ -363,7 +391,7 @@ pass, publishes the app to GitHub Pages (`.github/workflows/deploy.yml`).
 
 ## Ideas for later
 
-- Rhythm from PDFs, so play-along works for them too
+- Rhythm from PDFs, so play-along works for them too (MIDI files already do)
 - Chord naming from the sounding notes
 - Repeats and da capo handling in the practice cursor
 - Exporting and importing your corrections as a backup

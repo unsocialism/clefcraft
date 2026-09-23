@@ -13,7 +13,7 @@
 
 import type { NoteEdits } from '../pdf/edits.ts';
 
-export type ScoreKind = 'pdf' | 'musicxml';
+export type ScoreKind = 'pdf' | 'musicxml' | 'midi';
 
 /** What the library list shows. The file itself is fetched separately. */
 export interface ScoreEntry {

@@ -1,15 +1,15 @@
 import { useCallback, useRef, useState } from 'react';
 
-export type LoadedFileKind = 'musicxml' | 'pdf';
+export type LoadedFileKind = 'musicxml' | 'pdf' | 'midi';
 
 export interface LoadedFile {
   readonly kind: LoadedFileKind;
   readonly name: string;
   /**
    * MusicXML as text, a Blob for a compressed .mxl, or an ArrayBuffer for a
-   * PDF. OSMD's load() takes `string | Document | Blob` — handing it a
-   * Uint8Array for an .mxl does not work, which is why the zip case stays a
-   * Blob all the way through.
+   * PDF or a MIDI file. OSMD's load() takes `string | Document | Blob` —
+   * handing it a Uint8Array for an .mxl does not work, which is why the zip
+   * case stays a Blob all the way through.
    */
   readonly content: string | Blob | ArrayBuffer;
 }
@@ -21,10 +21,12 @@ export interface ScoreLoaderProps {
 }
 
 const MUSICXML_EXTENSIONS = ['.musicxml', '.xml', '.mxl'];
+const MIDI_EXTENSIONS = ['.mid', '.midi'];
 
 function kindOf(name: string): LoadedFileKind | null {
   const lower = name.toLowerCase();
   if (lower.endsWith('.pdf')) return 'pdf';
+  if (MIDI_EXTENSIONS.some((extension) => lower.endsWith(extension))) return 'midi';
   if (MUSICXML_EXTENSIONS.some((extension) => lower.endsWith(extension))) return 'musicxml';
   return null;
 }
@@ -37,11 +39,13 @@ export function ScoreLoader({ onLoad, onError, currentName }: ScoreLoaderProps) 
     async (file: File) => {
       const kind = kindOf(file.name);
       if (!kind) {
-        onError(`${file.name} is not a score. Load a .musicxml, .xml, .mxl or .pdf file.`);
+        onError(
+          `${file.name} is not a score. Load a .musicxml, .xml, .mxl, .pdf, .mid or .midi file.`,
+        );
         return;
       }
       try {
-        if (kind === 'pdf') {
+        if (kind === 'pdf' || kind === 'midi') {
           onLoad({ kind, name: file.name, content: await file.arrayBuffer() });
           return;
         }
@@ -77,7 +81,7 @@ export function ScoreLoader({ onLoad, onError, currentName }: ScoreLoaderProps) 
       <input
         ref={inputRef}
         type="file"
-        accept=".musicxml,.xml,.mxl,.pdf"
+        accept=".musicxml,.xml,.mxl,.pdf,.mid,.midi"
         className="loader__input"
         onChange={(event) => {
           const file = event.target.files?.[0];
@@ -89,7 +93,7 @@ export function ScoreLoader({ onLoad, onError, currentName }: ScoreLoaderProps) 
         Open score
       </button>
       <span className="loader__hint">
-        {currentName ?? 'Drop a MusicXML (.musicxml, .mxl) or PDF here'}
+        {currentName ?? 'Drop a MusicXML, PDF or MIDI file here'}
       </span>
     </div>
   );

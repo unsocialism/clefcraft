@@ -59,7 +59,7 @@ export function ScoreLibrary({ entries, error, onOpen, onRemove }: ScoreLibraryP
           <li key={entry.id} className="library__item">
             <button type="button" className="library__open" onClick={() => onOpen(entry)}>
               <span className={`library__kind library__kind--${entry.kind}`}>
-                {entry.kind === 'pdf' ? 'PDF' : 'XML'}
+                {entry.kind === 'pdf' ? 'PDF' : entry.kind === 'midi' ? 'MIDI' : 'XML'}
               </span>
               <span className="library__name">{entry.name}</span>
               <span className="library__meta">
