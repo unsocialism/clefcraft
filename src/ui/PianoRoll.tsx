@@ -12,11 +12,17 @@ const FALLBACK_HEIGHT_PX = 104;
  *
  * Set as a speed rather than as "so many seconds of history", so the
  * animation feels the same on a tall strip and on the short one a phone in
- * landscape gets — the short one simply holds less of the past. Fast enough
- * that a key held for a second draws a bar you can measure by eye, which is
- * the whole point of the strip.
+ * landscape gets — the short one simply holds less of the past.
+ *
+ * Pitched so that an ordinary note fills an obvious part of the strip: a
+ * key held half a second draws half of it, and one held for a second and a
+ * bit fills it. Slower than this and notes of the length people actually
+ * play were a sliver at the bottom, which told you nothing. The price is
+ * how much of the past is on screen — a little over a second at full
+ * height — and that is the right way round: the strip is for how you are
+ * playing now, and the staff above it is what remembers.
  */
-const PIXELS_PER_SECOND = 46;
+const PIXELS_PER_SECOND = 88;
 /** How often to look again while there is nothing to animate. */
 const IDLE_MS = 120;
 
@@ -33,9 +39,9 @@ export interface PianoRollProps {
  * What you played, rising off the keys.
  *
  * A note appears at the keyboard the moment it is struck, grows while the
- * key is held, and drifts upwards until it leaves the strip about five
- * seconds later. It says what notation cannot: how long you held each key
- * and how evenly the notes fell.
+ * key is held, and drifts up and off the top a second or so later. It says
+ * what notation cannot: how long you held each key and how evenly the notes
+ * fell.
  *
  * Drawn on a canvas rather than as elements. There is no state to keep
  * between frames — every frame is the same notes drawn against a later
