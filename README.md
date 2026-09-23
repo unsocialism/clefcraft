@@ -122,14 +122,17 @@ on every keypress is unreadable. There is no rhythm in it: each moment is one
 note, however long you held it.
 
 **A piano roll.** Above the keys, each note appears the moment it is struck,
-grows while you hold it, and drifts up and out over about five seconds. That is
-the half the staff cannot tell you — how long each key was down and how evenly
-the notes fell. It is drawn on a canvas from the keyboard's own geometry
-(`core/music/keyboard.ts`), inside the keyboard's own strip, so a note sits over
-its key at any width and scrolls sideways with the keys on a phone. When nothing
-is sounding and nothing is still on screen it stops animating and looks again a
-few times a second, so an open tab on a phone is not sixty wasted frames a
-second.
+grows while you hold it, and drifts up and out — the half the staff cannot tell
+you: how long each key was down, and how evenly the notes fell. It travels at a
+set speed, 46 pixels a second, rather than holding a set number of seconds of
+history: a second of playing then draws the same bar whatever the strip's
+height, instead of a sliver you have to squint at on a short one. The strip
+holds a little over two seconds at full height. It is drawn on a canvas from the
+keyboard's own geometry (`core/music/keyboard.ts`), inside the keyboard's own
+strip, so a note sits over its key at any width and scrolls sideways with the
+keys on a phone. When nothing is sounding and nothing is still on screen it
+stops animating and looks again a few times a second, so an open tab on a phone
+is not sixty wasted frames a second.
 
 ## Recording free play
 
@@ -400,6 +403,14 @@ scrollable.
 is F♯ in D major and G♭ in E♭ major. `spellNote` picks the letter from the key
 signature, preferring a natural over an awkward letter — which is why F major
 writes note 71 as B♮ and not C♭.
+
+**The note readout is a fixed height.** The names of the notes you are
+playing are twice the size of the "Play a note" hint they replace, so a box
+sized to its contents grew by sixteen pixels the instant a key went down and
+shrank again when it came up — shoving the record panel and the music down the
+page and back on every keypress. It is now one height either way, and a chord
+too wide for it scrolls sideways inside it rather than wrapping, which would do
+the same thing.
 
 **A dot is two things in VexFlow, and `Dot` only draws one of them.**
 `Dot.buildAndAttach` adds the dot glyph; it does not add the half again to

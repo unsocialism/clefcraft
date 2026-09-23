@@ -875,13 +875,29 @@ body {
   padding: 10px 12px;
 }
 
+/* One height, sounding or silent. The note names are twice the size of the
+   hint they replace, so a box that grew to fit them shoved the record panel
+   and the music down the page on every single keypress — and back up again
+   on release. A chord too wide for the box scrolls sideways inside it
+   instead of wrapping, which would do the same thing. */
 .readout {
   min-height: 0;
+  height: 54px;
   padding: 8px 14px;
+  align-items: center;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.readout::-webkit-scrollbar {
+  display: none;
 }
 
 .readout__note {
   font-size: 1.9rem;
+  line-height: 1.15;
 }
 
 /* On a short window the keyboard would eat the score; shrink it instead. */

@@ -7,8 +7,16 @@ import type { LiveNote } from '../core/midi/trail.ts';
 const WHITE_KEY_PX = 26;
 /** How tall the strip is when the stylesheet has not said. */
 const FALLBACK_HEIGHT_PX = 104;
-/** How many seconds of playing the strip holds. */
-const SECONDS = 5;
+/**
+ * How fast a note travels up the strip, in pixels a second.
+ *
+ * Set as a speed rather than as "so many seconds of history", so the
+ * animation feels the same on a tall strip and on the short one a phone in
+ * landscape gets — the short one simply holds less of the past. Fast enough
+ * that a key held for a second draws a bar you can measure by eye, which is
+ * the whole point of the strip.
+ */
+const PIXELS_PER_SECOND = 46;
 /** How often to look again while there is nothing to animate. */
 const IDLE_MS = 120;
 
@@ -69,7 +77,7 @@ export function PianoRoll({ notes, lowest, highest, running = true }: PianoRollP
       // every width.
       const scale = Math.min(width / drawnWidth, 1);
       const offset = (width - drawnWidth * scale) / 2;
-      const perMs = height / (SECONDS * 1000);
+      const perMs = PIXELS_PER_SECOND / 1000;
       const now = performance.now();
       let drawing = false;
 
