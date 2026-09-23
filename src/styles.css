@@ -1522,3 +1522,41 @@ body {
     animation: none;
   }
 }
+
+/* ---------- the live view in free play ---------- */
+
+/* The trail marches one slot to the left as each new moment arrives, rather
+   than the whole staff redrawing under your eyes. */
+.staff__canvas--slide {
+  animation: staff-slide 130ms ease-out;
+}
+
+@keyframes staff-slide {
+  from { transform: translateX(var(--slot, 40px)); }
+  to { transform: translateX(0); }
+}
+
+/* Notes rising off the keys. Sits in the keyboard's own strip so it scrolls
+   with the keys on a narrow screen and lines up with them at any width. */
+.piano-roll {
+  display: block;
+  width: 100%;
+  min-width: 720px;
+  height: 104px;
+  background: linear-gradient(to bottom, transparent, rgba(47, 109, 246, 0.05));
+  border-bottom: 1px solid var(--border);
+}
+
+/* A phone in landscape has no room to spare: the roll gives most of it
+   back rather than squeezing the music. */
+@media (max-height: 560px) {
+  .piano-roll {
+    height: 56px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .staff__canvas--slide {
+    animation: none;
+  }
+}

@@ -1,4 +1,10 @@
-import { useEffect, useMemo, useRef, type PointerEvent as ReactPointerEvent } from 'react';
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+} from 'react';
 
 import { keyboardLayout, type KeyRect } from '../core/music/keyboard.ts';
 import { noteName, pitchClassName, spellNote } from '../core/music/pitch.ts';
@@ -39,6 +45,13 @@ export interface PianoKeyboardProps {
   readonly guided?: boolean;
   readonly onNoteDown?: (midi: number) => void;
   readonly onNoteUp?: (midi: number) => void;
+  /**
+   * Drawn directly above the keys, inside the same strip. Anything that has
+   * to line up with the keyboard belongs here rather than beside it: on a
+   * narrow screen the strip scrolls sideways, and a separate element would
+   * stay behind.
+   */
+  readonly above?: ReactNode;
 }
 
 export function PianoKeyboard({
@@ -52,6 +65,7 @@ export function PianoKeyboard({
   guided = false,
   onNoteDown,
   onNoteUp,
+  above,
 }: PianoKeyboardProps) {
   const layout = useMemo(() => keyboardLayout(lowest, highest), [lowest, highest]);
   const activeSet = useMemo(() => new Set(active), [active]);
@@ -193,6 +207,7 @@ export function PianoKeyboard({
 
   return (
     <div className="keyboard-scroll" ref={scrollRef}>
+      {above}
       <svg
         className={guided ? 'keyboard keyboard--guided' : 'keyboard'}
         viewBox={`0 0 ${widthPx} ${KEYBOARD_HEIGHT_PX}`}

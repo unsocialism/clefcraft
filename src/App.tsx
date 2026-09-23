@@ -17,6 +17,7 @@ import {
 } from './core/pdf/edits.ts';
 import { openLibrary, type Library, type ScoreEntry } from './core/library/library.ts';
 import { MidiFileError, parseMidiFile } from './core/midi/midiFile.ts';
+import type { MidiEvent } from './core/midi/types.ts';
 import { scoreFromMidi, type MidiScore } from './core/score/midiScore.ts';
 import { scoreFromPdfNotes } from './core/score/pdfScore.ts';
 import { toMidiFile, toMusicXml } from './core/score/exportScore.ts';
@@ -25,11 +26,13 @@ import type { PdfReadResult } from './core/pdf/pdfNotes.ts';
 import { usePianoInput } from './hooks/usePianoInput.ts';
 import { useImmersive } from './hooks/useImmersive.ts';
 import { DEFAULT_METER, usePractice } from './hooks/usePractice.ts';
+import { TRAIL_MOMENTS, useLiveTrail } from './hooks/useLiveTrail.ts';
 import { useRecorder } from './hooks/useRecorder.ts';
 import { useTraining } from './hooks/useTraining.ts';
 import { GrandStaff } from './ui/GrandStaff.tsx';
 import { NoteReadout } from './ui/NoteReadout.tsx';
 import { PianoKeyboard, type KeyGuide } from './ui/PianoKeyboard.tsx';
+import { PianoRoll } from './ui/PianoRoll.tsx';
 import { Toolbar } from './ui/Toolbar.tsx';
 import { PdfView, type EditAction } from './ui/pdf/PdfView.tsx';
 import { CountIn } from './ui/practice/BeatPulse.tsx';
@@ -135,13 +138,25 @@ export function App() {
   const recorder = useRecorder();
   const recordMidi = recorder.handleMidi;
 
+  // And it always keeps the last few seconds, for the running staff and the
+  // roll above the keys. Both are fed from one fold of the events.
+  const trail = useLiveTrail();
+  const trailMidi = trail.handleMidi;
+  const freeMidi = useCallback(
+    (event: MidiEvent) => {
+      trailMidi(event);
+      recordMidi(event);
+    },
+    [trailMidi, recordMidi],
+  );
+
   const piano = usePianoInput(
     useMemo(
       () => ({
-        onEvent: inPractice ? handleMidi : inTraining ? trainingMidi : inFree ? recordMidi : undefined,
+        onEvent: inPractice ? handleMidi : inTraining ? trainingMidi : inFree ? freeMidi : undefined,
         onRawMessage: inPractice ? handleRawMessage : inTraining ? trainingRaw : undefined,
       }),
-      [inPractice, inTraining, inFree, handleMidi, handleRawMessage, trainingMidi, trainingRaw, recordMidi],
+      [inPractice, inTraining, inFree, handleMidi, handleRawMessage, trainingMidi, trainingRaw, freeMidi],
     ),
   );
 
@@ -865,7 +880,13 @@ export function App() {
       <main className="app__main" ref={mainRef}>
         {appMode === 'free' ? (
           <>
-            <GrandStaff notes={piano.notes} fifths={fifths} accidentals={accidentals} />
+            <GrandStaff
+              notes={piano.notes}
+              fifths={fifths}
+              accidentals={accidentals}
+              trail={trail.moments}
+              slots={TRAIL_MOMENTS}
+            />
             {/* The take, written out. Below the live staff, because it is
                 what you played rather than what you are playing. */}
             {recorder.take && (
@@ -993,6 +1014,7 @@ export function App() {
 
       <div className="app__bottom">
         <PianoKeyboard
+          above={inFree ? <PianoRoll notes={trail.notes} running={inFree} /> : null}
           active={piano.notes}
           guides={guides}
           fifths={fifths}
