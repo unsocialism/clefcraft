@@ -10,7 +10,8 @@ browser and installs on a phone like an app; see [DEPLOY.md](DEPLOY.md).
 
 ## Three modes:
 
-- **Free play** — play anything; see the note names and a live grand staff.
+- **Free play** — play anything; see the note names and a live grand staff, and
+  record what you played as sheet music you can keep.
 - **Practice** — open a MusicXML file, a PDF or a MIDI file. The keyboard lights the keys
   for the next notes, blue for the right hand and orange for the left, with
   the two after that shown faintly so you can prepare your hand.
@@ -105,6 +106,45 @@ A note crossing a barline is split and tied, the key signature and time
 signatures are taken from the file, and percussion (channel 10) is left out.
 So the notation is a fair reading of the performance rather than a
 reconstruction of the original score; the pitches and their order are exact.
+
+## Recording free play
+
+*Record* in free play keeps what you play and writes it out. A take is not a
+special kind of thing: it is turned into a MIDI file, and from there it takes
+the same path as any MIDI file you might open — engraved by clefcraft, kept in
+*Your scores*, practised against in either mode, or downloaded as a `.mid` for
+MuseScore or a DAW. What you see under the keyboard is exactly what gets saved.
+
+Writing playing down means three decisions, and they are the difference
+between a readable page and a thicket:
+
+- **The tempo is found, not assumed.** Nothing was played to a click, so the
+  written tempo is a choice — but not an arbitrary one. Onsets are rounded to
+  sixteenths when the music is engraved, so the tempo that lands them nearest
+  the sixteenths is the one that writes down what was actually played. A scale
+  played at 550ms a note is eight clean quarter notes at 107bpm; called 90bpm
+  the same playing is dotted eighths, ties across the barline and sixteenth
+  rests. Half and double a tempo fit equally well — the same playing written in
+  eighths or in half notes — so the one where a step from note to note is about
+  one beat wins. The control beside the take offers a few round tempos as well,
+  because a take that reads oddly usually reads better at one of them.
+- **Notes are joined up.** Nobody holds a key for its full written value.
+  Taken literally, an ordinary line of quarter notes comes out as dotted
+  eighths separated by sixteenth rests, so a note released just before the next
+  one is written as lasting until it. Only ever lengthened: a held bass under a
+  moving line keeps its length, and a real staccato keeps its rest.
+- **The pedal is left out.** Pedalled playing recorded faithfully is a page of
+  overlapping long notes tied together — a fair record of the sound and a poor
+  record of the playing. What is written is what your fingers did.
+
+What it does not do is follow you. There is no click and no beat tracking
+beyond the tempo fit, so playing that speeds up and slows down drifts away from
+the grid, and the further in you get the stranger the rhythms look. Takes of a
+few lines come out well; a whole rubato piece does not. The pitches and their
+order are always exact.
+
+Leaving the Free play tab stops a recording, since the keys then belong to
+whichever tab you moved to. A take stops by itself after ten minutes.
 
 ## Training
 
@@ -366,18 +406,22 @@ would need a native CoreMIDI bridge behind the same interface.
 
 ## What has and has not been tested
 
-**Verified:** 345 unit tests — among them pitch spelling across all 15 keys
+**Verified:** 372 unit tests — among them pitch spelling across all 15 keys
 and all 88 notes, MIDI parsing, the sustain pedal, the practice state
 machine and its chord window, PDF reading against real Sibelius and
-MuseScore exports, corrections, the device library, and the training
-generator (ranges, stepwise motion, hand changes, accidentals, intervals).
+MuseScore exports, corrections, the device library, the training
+generator (ranges, stepwise motion, hand changes, accidentals, intervals),
+and the free-play recorder (pairing releases with presses, chords, the pedal,
+joining notes up, and the tempo fit).
 End-to-end in headless Chromium: all three modes, PDF reading and
 correcting, the library across reloads, offline use through the service
 worker, playing training exercises through (including a simulated MIDI
 piano for the chord timing), the play-along count-in, sweeping line and
 beat pulse (counted in at the right note, sweeping between the right ones,
 no second count-in when the tempo slider moves), and the hide-the-controls
-gestures at phone size. The training sheet was checked with the real VexFlow.
+gestures at phone size, and recording free play end to end — played in,
+written out, saved, reopened from the library and read back as a score. The
+training sheet was checked with the real VexFlow.
 
 **Not verified:** **OpenSheetMusicDisplay** (MusicXML engraving) has only run
 against a recording stub, not the real library, and the touch gestures have

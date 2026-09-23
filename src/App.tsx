@@ -25,6 +25,7 @@ import type { PdfReadResult } from './core/pdf/pdfNotes.ts';
 import { usePianoInput } from './hooks/usePianoInput.ts';
 import { useImmersive } from './hooks/useImmersive.ts';
 import { DEFAULT_METER, usePractice } from './hooks/usePractice.ts';
+import { useRecorder } from './hooks/useRecorder.ts';
 import { useTraining } from './hooks/useTraining.ts';
 import { GrandStaff } from './ui/GrandStaff.tsx';
 import { NoteReadout } from './ui/NoteReadout.tsx';
@@ -32,6 +33,8 @@ import { PianoKeyboard, type KeyGuide } from './ui/PianoKeyboard.tsx';
 import { Toolbar } from './ui/Toolbar.tsx';
 import { PdfView, type EditAction } from './ui/pdf/PdfView.tsx';
 import { CountIn } from './ui/practice/BeatPulse.tsx';
+import { RecordControls } from './ui/free/RecordControls.tsx';
+import { downloadFile } from './ui/download.ts';
 import { PracticeControls } from './ui/practice/PracticeControls.tsx';
 import { MidiMonitor } from './ui/practice/MidiMonitor.tsx';
 import { ScoreLibrary } from './ui/practice/ScoreLibrary.tsx';
@@ -105,6 +108,13 @@ export function App() {
     setMeter(first ? { beats: first.beats, beatType: first.beatType } : DEFAULT_METER);
   }, [midiScore, setMeter]);
 
+  // Notes, not events: a chord is one event and several notes, and the
+  // count is there to answer "how much is in this file?".
+  const midiNoteCount = useMemo(
+    () => midiScore?.score.events.reduce((sum, event) => sum + event.notes.length, 0) ?? 0,
+    [midiScore],
+  );
+
   /** Play along is running: the clock is moving and the line sweeps. */
   const playingAlong = practice.running && practice.mode === 'tempo';
 
@@ -118,15 +128,30 @@ export function App() {
   // silently advance a loaded score — and each tab's keys go to its own.
   const inPractice = appMode === 'practice';
   const inTraining = appMode === 'training';
+  const inFree = appMode === 'free';
+
+  // Free play can be recorded. The recorder ignores everything until you
+  // press Record, so it costs nothing to have it listening.
+  const recorder = useRecorder();
+  const recordMidi = recorder.handleMidi;
+
   const piano = usePianoInput(
     useMemo(
       () => ({
-        onEvent: inPractice ? handleMidi : inTraining ? trainingMidi : undefined,
+        onEvent: inPractice ? handleMidi : inTraining ? trainingMidi : inFree ? recordMidi : undefined,
         onRawMessage: inPractice ? handleRawMessage : inTraining ? trainingRaw : undefined,
       }),
-      [inPractice, inTraining, handleMidi, handleRawMessage, trainingMidi, trainingRaw],
+      [inPractice, inTraining, inFree, handleMidi, handleRawMessage, trainingMidi, trainingRaw, recordMidi],
     ),
   );
+
+  // Leaving free play stops a running recording. The keys go to whichever
+  // tab is open, so carrying on would leave a take with a silent hole in it
+  // where the practice happened.
+  const stopRecording = recorder.stop;
+  useEffect(() => {
+    if (!inFree) stopRecording();
+  }, [inFree, stopRecording]);
 
   const mainRef = useRef<HTMLElement | null>(null);
   // Not while correcting notes: there, every tap on the page means "a note
@@ -184,6 +209,51 @@ export function App() {
   const refreshEntries = useCallback(async () => {
     if (library) setEntries(await library.list());
   }, [library]);
+
+  // ---- keeping a free-play take ----
+  const [takeSavedAs, setTakeSavedAs] = useState<string | null>(null);
+  const [savingTake, setSavingTake] = useState(false);
+  const take = recorder.take;
+
+  /** A take is named for when it was played; that is all you know about it. */
+  const takeName = useCallback(() => {
+    const now = new Date();
+    const date = now.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+    const time = now.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+    return `Free play ${date} ${time}`;
+  }, []);
+
+  // A take that has been re-written at another tempo is a different file,
+  // so it is no longer the one that was saved.
+  useEffect(() => {
+    setTakeSavedAs(null);
+  }, [take]);
+
+  const saveTake = useCallback(async () => {
+    if (!library || !take) return;
+    setSavingTake(true);
+    try {
+      const name = `${takeName()}.mid`;
+      const entry = await library.save({
+        name,
+        kind: 'midi',
+        // A fresh copy: the take's own bytes are reused when it is
+        // downloaded, and a Blob must not be handed the same buffer twice.
+        data: new Blob([take.midi.slice()], { type: 'audio/midi' }),
+      });
+      setTakeSavedAs(entry.name);
+      void refreshEntries();
+    } catch {
+      setLoadError('The recording could not be saved. The device may be out of storage.');
+    } finally {
+      setSavingTake(false);
+    }
+  }, [library, take, takeName, refreshEntries]);
+
+  const downloadTake = useCallback(() => {
+    if (!take) return;
+    downloadFile(take.midi.slice(), { name: `${takeName()}.mid`, type: 'audio/midi' });
+  }, [take, takeName]);
 
   /**
    * Open a score, keeping it in the library and bringing back any
@@ -437,16 +507,7 @@ export function App() {
         format === 'midi'
           ? ([toMidiFile(pdfScore.clusters, options), 'audio/midi', 'mid'] as const)
           : ([toMusicXml(pdfScore.clusters, options), 'application/vnd.recordare.musicxml+xml', 'musicxml'] as const);
-      const url = URL.createObjectURL(new Blob([data as BlobPart], { type }));
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `${base}.${extension}`;
-      document.body.append(link);
-      link.click();
-      link.remove();
-      // Revoked on a later tick: Safari has not finished with the URL when
-      // click() returns.
-      setTimeout(() => URL.revokeObjectURL(url), 10_000);
+      downloadFile(data as BlobPart, { name: `${base}.${extension}`, type });
     },
     [pdfScore, file?.name, pdfRead],
   );
@@ -583,7 +644,16 @@ export function App() {
           {appMode === 'training' && <TrainingControls training={training} />}
 
           {appMode === 'free' && (
-            <NoteReadout notes={piano.notes} fifths={fifths} accidentals={accidentals} />
+            <>
+              <NoteReadout notes={piano.notes} fifths={fifths} accidentals={accidentals} />
+              <RecordControls
+                recorder={recorder}
+                onSave={library ? () => void saveTake() : undefined}
+                saving={savingTake}
+                savedAs={takeSavedAs}
+                onDownload={downloadTake}
+              />
+            </>
           )}
 
           {appMode === 'practice' && (
@@ -644,8 +714,8 @@ export function App() {
               {file?.kind === 'midi' && midiScore && (
                 <div className="toolbar toolbar--compact">
                   <span className="toolbar__inline-note">
-                    {midiScore.score.events.length} note
-                    {midiScore.score.events.length === 1 ? '' : 's'} over {midiScore.measures.length}{' '}
+                    {midiNoteCount} note
+                    {midiNoteCount === 1 ? '' : 's'} over {midiScore.measures.length}{' '}
                     bar{midiScore.measures.length === 1 ? '' : 's'}
                     {midiScore.score.tempoBpm ? ` · ${midiScore.score.tempoBpm} bpm in the file` : ''}
                     {midiScore.handsFrom === 'split'
@@ -794,7 +864,21 @@ export function App() {
 
       <main className="app__main" ref={mainRef}>
         {appMode === 'free' ? (
-          <GrandStaff notes={piano.notes} fifths={fifths} accidentals={accidentals} />
+          <>
+            <GrandStaff notes={piano.notes} fifths={fifths} accidentals={accidentals} />
+            {/* The take, written out. Below the live staff, because it is
+                what you played rather than what you are playing. */}
+            {recorder.take && (
+              <div className="take">
+                <p className="take__title">
+                  Your recording · {recorder.take.score.measures.length} bar
+                  {recorder.take.score.measures.length === 1 ? '' : 's'} at {recorder.tempoBpm} bpm ·
+                  hands split by pitch
+                </p>
+                <MidiSheet midiScore={recorder.take.score} currentEvent={null} />
+              </div>
+            )}
+          </>
         ) : appMode === 'training' ? (
           <>
             <TrainingSheet

@@ -13,6 +13,13 @@
  */
 
 import type { PdfNote } from '../pdf/pdfNotes.ts';
+import {
+  TICKS_PER_QUARTER,
+  conductorTrack,
+  header,
+  noteTrack,
+  type NoteEvent,
+} from '../midi/writeMidi.ts';
 
 /** One moment: the notes drawn at the same horizontal position. */
 export type Cluster = readonly PdfNote[];
@@ -156,35 +163,6 @@ export function toMusicXml(clusters: readonly Cluster[], options: ExportOptions 
 
 // ---- MIDI ----
 
-const TICKS_PER_QUARTER = 480;
-
-function variableLength(value: number): number[] {
-  const bytes = [value & 0x7f];
-  let rest = value >> 7;
-  while (rest > 0) {
-    bytes.unshift((rest & 0x7f) | 0x80);
-    rest >>= 7;
-  }
-  return bytes;
-}
-
-function chunk(id: string, body: readonly number[]): number[] {
-  const length = body.length;
-  return [
-    ...[...id].map((c) => c.charCodeAt(0)),
-    (length >> 24) & 0xff,
-    (length >> 16) & 0xff,
-    (length >> 8) & 0xff,
-    length & 0xff,
-    ...body,
-  ];
-}
-
-function textEvent(type: number, text: string): number[] {
-  const bytes = [...text].map((c) => c.charCodeAt(0) & 0x7f);
-  return [0x00, 0xff, type, ...variableLength(bytes.length), ...bytes];
-}
-
 interface MidiOptions extends ExportOptions {
   /** Quarter notes per minute written into the file. */
   readonly tempoBpm?: number;
@@ -198,60 +176,32 @@ interface MidiOptions extends ExportOptions {
  */
 export function toMidiFile(clusters: readonly Cluster[], options: MidiOptions = {}): Uint8Array {
   const { title = 'Untitled', tempoBpm = 90, software = 'clefcraft' } = options;
-  const microsPerQuarter = Math.round(60_000_000 / tempoBpm);
-
-  const header = chunk('MThd', [
-    0x00, 0x01, // format 1
-    0x00, 0x03, // three tracks: tempo, right hand, left hand
-    (TICKS_PER_QUARTER >> 8) & 0xff,
-    TICKS_PER_QUARTER & 0xff,
-  ]);
-
-  const conductor = chunk('MTrk', [
-    ...textEvent(0x03, title),
-    ...textEvent(0x01, `${software}: pitches read from a PDF; rhythm is not read.`),
-    0x00,
-    0xff,
-    0x51,
-    0x03,
-    (microsPerQuarter >> 16) & 0xff,
-    (microsPerQuarter >> 8) & 0xff,
-    microsPerQuarter & 0xff,
-    0x00,
-    0xff,
-    0x2f,
-    0x00,
-  ]);
 
   const handTrack = (staff: 1 | 2, name: string, channel: number): number[] => {
     // Every event lasts one quarter, so an event's start is its index.
-    const events: { tick: number; on: boolean; midi: number }[] = [];
+    const events: NoteEvent[] = [];
     clusters.forEach((cluster, index) => {
       for (const note of cluster) {
         if ((note.staff <= 1 ? 1 : 2) !== staff) continue;
-        events.push({ tick: index * TICKS_PER_QUARTER, on: true, midi: note.midi });
-        events.push({ tick: (index + 1) * TICKS_PER_QUARTER, on: false, midi: note.midi });
+        events.push({ tick: index * TICKS_PER_QUARTER, on: true, midi: note.midi, velocity: 80 });
+        events.push({
+          tick: (index + 1) * TICKS_PER_QUARTER,
+          on: false,
+          midi: note.midi,
+          velocity: 0,
+        });
       }
     });
-    // Note-offs before note-ons at the same tick, so a repeated note is
-    // released before it is struck again rather than cut short by its own
-    // note-off.
-    events.sort((a, b) => a.tick - b.tick || Number(a.on) - Number(b.on) || a.midi - b.midi);
-
-    const body: number[] = [...textEvent(0x03, name)];
-    let last = 0;
-    for (const event of events) {
-      body.push(...variableLength(event.tick - last));
-      body.push((event.on ? 0x90 : 0x80) | channel, event.midi & 0x7f, event.on ? 80 : 0);
-      last = event.tick;
-    }
-    body.push(0x00, 0xff, 0x2f, 0x00);
-    return chunk('MTrk', body);
+    return noteTrack(events, { name, channel });
   };
 
   return Uint8Array.from([
-    ...header,
-    ...conductor,
+    ...header(3), // tempo, right hand, left hand
+    ...conductorTrack({
+      title,
+      comment: `${software}: pitches read from a PDF; rhythm is not read.`,
+      tempoBpm,
+    }),
     ...handTrack(1, 'Right hand', 0),
     ...handTrack(2, 'Left hand', 1),
   ]);
