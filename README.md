@@ -191,11 +191,17 @@ make it followable:
   chasing it from a standing start. It is given every time you press Play,
   including after a pause, but not when you only move the tempo slider.
 - **A sweeping line.** On a MIDI score, a violet line glides across the
-  staves in time with the clock. It is pinned to where the notes were
-  actually engraved rather than swept at a constant speed, so it reaches
-  each note exactly when the note is due — and between notes it shows you
-  the beat coming instead of leaving you to infer it from the note that has
-  just gone past.
+  staves in time with the clock, showing you the beat coming instead of
+  leaving you to infer it from the note that has just gone past. It follows
+  where the notes were actually engraved, but only halfway: engraved spacing
+  is not proportional to time — an engraver may leave 26 units between two
+  eighth notes or 54 — so a line pinned strictly to the noteheads doubles
+  and halves its speed within a bar, which lurches. Pulling it halfway
+  towards even time keeps it within a few units of every note while more
+  than halving the change in speed. Each bar also hands the line to the
+  first note of the *next* bar rather than stopping at its own barline, so
+  it crosses barlines without a jump; at the end of a line it stops at the
+  barline, because the next bar is not beside it but below it.
 - **A beat pulse.** A dot per beat of the bar beside the tempo slider,
   lighting up as the bar comes round: a metronome you can see, since the app
   makes no sound.
@@ -331,6 +337,14 @@ is F♯ in D major and G♭ in E♭ major. `spellNote` picks the letter from the
 signature, preferring a natural over an awkward letter — which is why F major
 writes note 71 as B♮ and not C♭.
 
+**A dot is two things in VexFlow, and `Dot` only draws one of them.**
+`Dot.buildAndAttach` adds the dot glyph; it does not add the half again to
+the note's *ticks*. A dotted note built that way is still formatted as an
+undotted one, so every note after it in that hand lands early and the two
+staves drift apart on the page — visible on any MIDI file with a dotted
+quarter in the left hand. The dots have to be declared in the note itself
+(`new StaveNote({ ..., dots })`) as well as drawn.
+
 **pdf.js legacy build, on purpose.** The default build calls very recent JS
 APIs; on a Chrome even slightly behind, the second page of a document fails to
 render with an unhelpful error. The legacy build ships the polyfills.
@@ -352,7 +366,7 @@ would need a native CoreMIDI bridge behind the same interface.
 
 ## What has and has not been tested
 
-**Verified:** 343 unit tests — among them pitch spelling across all 15 keys
+**Verified:** 345 unit tests — among them pitch spelling across all 15 keys
 and all 88 notes, MIDI parsing, the sustain pedal, the practice state
 machine and its chord window, PDF reading against real Sibelius and
 MuseScore exports, corrections, the device library, and the training

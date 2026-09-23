@@ -70,8 +70,12 @@ describe('placing the sweeping line', () => {
 });
 
 describe("gathering a bar's anchors", () => {
+  /** Unblended, to check what the engraver gave us is read correctly. */
+  const raw = (points: Parameters<typeof anchorsFrom>[0], end: Parameters<typeof anchorsFrom>[1]) =>
+    anchorsFrom(points, end, 0);
+
   it('keeps one point per moment, at the leftmost of the two hands', () => {
-    const anchors = anchorsFrom(
+    const anchors = raw(
       [
         { quarters: 0, x: 120 },
         { quarters: 0, x: 118 },
@@ -86,8 +90,8 @@ describe("gathering a bar's anchors", () => {
     ]);
   });
 
-  it('sorts by time and ends at the barline', () => {
-    const anchors = anchorsFrom(
+  it('sorts by time and ends where the bar hands over', () => {
+    const anchors = raw(
       [
         { quarters: 3, x: 300 },
         { quarters: 1, x: 150 },
@@ -100,10 +104,10 @@ describe("gathering a bar's anchors", () => {
     );
   });
 
-  it('drops anything at or past the barline, which the barline speaks for', () => {
+  it('drops anything at or past the handover, which the handover speaks for', () => {
     // A tie's tail can be written at the bar end; two points at the same
     // moment would make the line jump backwards.
-    const anchors = anchorsFrom(
+    const anchors = raw(
       [
         { quarters: 0, x: 100 },
         { quarters: 4, x: 380 },
@@ -118,7 +122,7 @@ describe("gathering a bar's anchors", () => {
   });
 
   it('ignores points the engraver could not place', () => {
-    const anchors = anchorsFrom(
+    const anchors = raw(
       [
         { quarters: 0, x: Number.NaN },
         { quarters: 1, x: 200 },
@@ -129,5 +133,35 @@ describe("gathering a bar's anchors", () => {
       anchors.map((a) => a.quarters),
       [1, 4],
     );
+  });
+
+  it('pulls the middle anchors towards even time, leaving the ends alone', () => {
+    // Engraved: 100, 200, 220, 300 — the third note crowded up against the
+    // second. Even time would be 100, 166.7, 233.3, 300.
+    const points = [
+      { quarters: 0, x: 100 },
+      { quarters: 1, x: 200 },
+      { quarters: 2, x: 220 },
+    ];
+    const half = anchorsFrom(points, { quarters: 3, x: 300 }, 0.5);
+    assert.deepEqual(half[0], { quarters: 0, x: 100 }, 'the bar still starts on its first note');
+    assert.deepEqual(half[3], { quarters: 3, x: 300 }, 'and still hands over in the right place');
+    assert.ok(Math.abs(half[1]!.x - (200 + 500 / 3) / 2) < 1e-9);
+    assert.ok(Math.abs(half[2]!.x - (220 + 700 / 3) / 2) < 1e-9);
+  });
+
+  it('never lets the pull make the line stand still or go backwards', () => {
+    // Two notes engraved almost on top of each other: a strict reading
+    // would leave the line stalled between them for a whole beat.
+    const anchors = anchorsFrom(
+      [
+        { quarters: 0, x: 100 },
+        { quarters: 1, x: 180 },
+        { quarters: 2, x: 181 },
+      ],
+      { quarters: 4, x: 400 },
+    );
+    const steps = anchors.slice(1).map((a, i) => a.x - anchors[i]!.x);
+    for (const step of steps) assert.ok(step > 10, `each beat moves on: ${steps.join(', ')}`);
   });
 });

@@ -79,14 +79,35 @@ export function playheadAt(map: TimeMap, quarters: number): PlayheadSpot | null 
 }
 
 /**
- * Gather a bar's anchors: one per moment something is drawn, plus the
- * closing barline, with duplicates at the same moment resolved to the
- * leftmost — the two hands are formatted together, so a chord in both is one
- * point in time at one place on the page.
+ * How far the sweep is pulled from where the notes are towards where the
+ * clock is.
+ *
+ * Engraved spacing is not proportional to time: between two eighth notes an
+ * engraver may leave 26 units or 54, depending on what is above, below and
+ * beside them. A line pinned strictly to the noteheads therefore doubles and
+ * halves its speed within a bar, which reads as lurching — the thing a
+ * moving line is meant to cure. Pulling halfway towards even time keeps the
+ * line within a few units of each note while more than halving the change in
+ * speed, and it never stops or backs up.
+ */
+const PULL_TO_EVEN_TIME = 0.5;
+
+/**
+ * Gather a bar's anchors: one per moment something is drawn, plus where the
+ * bar hands over to the next, with duplicates at the same moment resolved to
+ * the leftmost — the two hands are formatted together, so a chord in both is
+ * one point in time at one place on the page.
+ *
+ * `end` is where the line should be when the bar's time runs out. Giving it
+ * the *next* bar's first note rather than this bar's closing barline is what
+ * makes the sweep continuous: without it the line reaches the barline and
+ * then jumps the gap to the first note of the next bar, exactly on the beat,
+ * which looks like the music skipped.
  */
 export function anchorsFrom(
   points: readonly Anchor[],
   end: { quarters: number; x: number },
+  pull: number = PULL_TO_EVEN_TIME,
 ): Anchor[] {
   const leftmost = new Map<number, number>();
   for (const point of points) {
@@ -98,5 +119,17 @@ export function anchorsFrom(
   const anchors = [...leftmost].map(([quarters, x]) => ({ quarters, x }));
   anchors.push({ quarters: end.quarters, x: end.x });
   anchors.sort((a, b) => a.quarters - b.quarters);
-  return anchors;
+
+  const first = anchors[0];
+  const last = anchors[anchors.length - 1];
+  if (!first || !last || pull <= 0 || last.quarters <= first.quarters) return anchors;
+  // Blend each anchor with where even time would have put it. The two ends
+  // are fixed points of that blend, so the bars still join up exactly.
+  const perQuarter = (last.x - first.x) / (last.quarters - first.quarters);
+  return anchors.map((anchor) => ({
+    quarters: anchor.quarters,
+    x:
+      anchor.x * (1 - pull) +
+      (first.x + (anchor.quarters - first.quarters) * perQuarter) * pull,
+  }));
 }

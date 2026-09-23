@@ -70,6 +70,11 @@ function buildNote(entry: EngravedEntry, clef: 'treble' | 'bass', colour: string
     clef,
     auto_stem: !entry.rest,
     align_center: entry.rest && entry.duration === 'w',
+    // The dots have to be declared here, not only drawn below: `Dot` adds
+    // the glyph but not the time it stands for, so a dotted note left to it
+    // alone counts as undotted and every note after it in that hand is
+    // formatted half a beat early — the two staves come apart on the page.
+    dots: entry.dots,
   });
   if (!entry.rest) {
     entry.notes.forEach((n, i) => {
@@ -177,7 +182,16 @@ function draw(host: HTMLDivElement, shownWidth: number, midiScore: MidiScore): E
   const context = renderer.getContext();
 
   const drawn = new Map<number, Drawn[]>();
-  const times: MappedBar[] = [];
+  /** Each bar as it was drawn, before the bars are joined up into a map. */
+  const laidOut: {
+    line: number;
+    startQuarters: number;
+    endQuarters: number;
+    top: number;
+    bottom: number;
+    barlineX: number;
+    points: Anchor[];
+  }[] = [];
   // The note at the end of the previous bar, per staff, when it is tied
   // into this one. A tie cannot cross a line, so it is dropped there.
   let pendingTies: (StaveNote | null)[] = [null, null];
@@ -282,12 +296,14 @@ function draw(host: HTMLDivElement, shownWidth: number, midiScore: MidiScore): E
       const barStart =
         bar.measure.staves[0][0]?.onsetQuarters ?? bar.measure.staves[1][0]?.onsetQuarters ?? 0;
       const barLength = (bar.measure.beats * 4) / bar.measure.beatType;
-      times.push({
+      laidOut.push({
+        line,
         startQuarters: barStart,
         endQuarters: barStart + barLength,
         top: treble.getYForLine(0) - PLAYHEAD_OVERHANG,
         bottom: bass.getYForLine(4) + PLAYHEAD_OVERHANG,
-        anchors: anchorsFrom(points, { quarters: barStart + barLength, x: x + w }),
+        barlineX: x + w,
+        points,
       });
 
       x += w;
@@ -316,6 +332,34 @@ function draw(host: HTMLDivElement, shownWidth: number, midiScore: MidiScore): E
       staves: new Set(items.map((item) => item.staff)),
     });
   }
+  // Join the bars up. A bar hands the line to the first note of the bar
+  // after it, so the sweep crosses the barline without a jump; at the end of
+  // a line it stops at the barline instead, because the next bar is not
+  // beside it but below it.
+  const firstNoteX = (points: readonly Anchor[]): number | null => {
+    let best: Anchor | null = null;
+    for (const point of points) {
+      if (!Number.isFinite(point.x)) continue;
+      if (!best || point.quarters < best.quarters || (point.quarters === best.quarters && point.x < best.x)) {
+        best = point;
+      }
+    }
+    return best?.x ?? null;
+  };
+  const times: MappedBar[] = laidOut.map((bar, index) => {
+    const next = laidOut[index + 1];
+    const handover = next && next.line === bar.line ? firstNoteX(next.points) : null;
+    return {
+      startQuarters: bar.startQuarters,
+      endQuarters: bar.endQuarters,
+      top: bar.top,
+      bottom: bar.bottom,
+      anchors: anchorsFrom(bar.points, {
+        quarters: bar.endQuarters,
+        x: handover ?? bar.barlineX,
+      }),
+    };
+  });
   times.sort((a, b) => a.startQuarters - b.startQuarters);
   return { spots, times };
 }
