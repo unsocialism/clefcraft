@@ -1323,3 +1323,12 @@ body {
     transition: none;
   }
 }
+
+/* The build, beside the name: small, quiet, and there when you look. */
+.app__version {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  cursor: default;
+}

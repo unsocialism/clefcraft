@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { isWebMidiSupported } from './core/midi/webMidiSource.ts';
+import { fullVersion, shortVersion } from './version.ts';
 import type { AccidentalPreference } from './core/music/pitch.ts';
 import {
   NO_EDITS,
@@ -496,6 +497,9 @@ export function App() {
           <header className="app__header">
             <div className="app__title">
               <h1>clefcraft</h1>
+            <span className="app__version" title={fullVersion()}>
+              {shortVersion()}
+            </span>
               <span className={`status status--${piano.status}`}>
                 <span className="status__dot" aria-hidden="true" />
                 {piano.status === 'ready' ? 'Listening' : 'Not connected'}

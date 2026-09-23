@@ -362,6 +362,15 @@ late. Between them those distinguish the three ways this can fail — notes not
 arriving at all, arriving at a pitch the score does not expect, or arriving
 correctly but spread too wide for the chord window.
 
+## Which version am I looking at?
+
+The name in the top left is followed by the version and the date it was
+built — `v0.4.0 · 23 Sep` — with the exact commit in the tooltip. An
+installed app that has quietly kept an old copy shows an old date, which is
+the quickest way to tell. The version comes from `package.json`; bump it
+when a release is worth naming. The date and commit are filled in by the
+build (`vite.config.ts`).
+
 ## Developing
 
 To run it from the source on your own computer:
