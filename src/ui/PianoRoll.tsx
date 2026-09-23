@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 
 import { keyboardLayout } from '../core/music/keyboard.ts';
-import type { LiveNote } from '../core/midi/trail.ts';
+import { verdictOf, type Judged, type LiveNote } from '../core/midi/trail.ts';
 
 /** Must match the keyboard's own white-key width, or nothing lines up. */
 const WHITE_KEY_PX = 26;
@@ -26,9 +26,30 @@ const PIXELS_PER_SECOND = 88;
 /** How often to look again while there is nothing to animate. */
 const IDLE_MS = 120;
 
+/**
+ * A note's colour, by what the exercise or the score made of it. Written as
+ * numbers rather than CSS variables because a canvas cannot read the
+ * stylesheet; they are the palette's own values.
+ */
+const COLOURS: Record<string, string> = {
+  correct: '31, 157, 85', // --ok
+  restarted: '194, 65, 12', // --warn: the right note, but not in time
+  wrong: '208, 52, 44',
+};
+/** Free play judges nothing, and neither does a repeated key of a chord. */
+const PLAIN_WHITE = '47, 109, 246';
+const PLAIN_BLACK = '30, 64, 175';
+/** How much louder a judged note is drawn than a plain one. */
+const EMPHASIS: Record<string, number> = { wrong: 1.5, restarted: 1.35, correct: 1.2 };
+
 export interface PianoRollProps {
   /** Live notes, read every frame rather than passed as state. */
   readonly notes: { readonly current: readonly LiveNote[] };
+  /**
+   * What the practice engine made of the last few presses, where something
+   * is judging them. Empty in free play, where a note is just a note.
+   */
+  readonly verdicts?: readonly Judged[];
   readonly lowest?: number;
   readonly highest?: number;
   /** Stop the animation when nothing can see it. */
@@ -48,8 +69,22 @@ export interface PianoRollProps {
  * clock — and a canvas does that in one pass, where fifty rectangles of DOM
  * updated sixty times a second is work the browser has to undo again.
  */
-export function PianoRoll({ notes, lowest, highest, running = true }: PianoRollProps) {
+export function PianoRoll({
+  notes,
+  verdicts = [],
+  lowest,
+  highest,
+  running = true,
+}: PianoRollProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  // Read every frame, so a press does not restart the animation loop.
+  const verdictsRef = useRef(verdicts);
+  verdictsRef.current = verdicts;
+  // The engine remembers only the last few presses, and a note is on screen
+  // longer than that in a quick passage. So a verdict is kept once seen: a
+  // note that turned green must not turn blue again as it rises. Keyed by
+  // the note's own start, because ids begin again when the trail is cleared.
+  const seen = useRef(new Map<string, string>());
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -87,6 +122,10 @@ export function PianoRoll({ notes, lowest, highest, running = true }: PianoRollP
       const now = performance.now();
       let drawing = false;
 
+      const judged = verdictsRef.current;
+      const kept = seen.current;
+      const live = new Set<string>();
+
       for (const note of notes.current) {
         const key = keys.get(note.midi);
         if (!key) continue;
@@ -100,13 +139,21 @@ export function PianoRoll({ notes, lowest, highest, running = true }: PianoRollP
         const x = offset + key.x * WHITE_KEY_PX * scale;
         const wide = Math.max(2, key.width * WHITE_KEY_PX * scale - 1);
 
+        const id = `${note.id}:${note.startMs}`;
+        live.add(id);
+        const verdict = kept.get(id) ?? verdictOf(note, judged);
+        if (verdict && !kept.has(id)) kept.set(id, verdict);
+
         // Fading with height rather than clipping: a note that simply
         // vanished at the top would read as an edit.
         const fade = Math.max(0, Math.min(1, (y + tall) / height));
         const strength = 0.35 + (note.velocity / 127) * 0.5;
-        context.fillStyle = key.black
-          ? `rgba(30, 64, 175, ${(strength * fade).toFixed(3)})`
-          : `rgba(47, 109, 246, ${(strength * fade).toFixed(3)})`;
+        const colour =
+          (verdict ? COLOURS[verdict] : undefined) ?? (key.black ? PLAIN_BLACK : PLAIN_WHITE);
+        // A wrong note is worth seeing from across the room; a right one
+        // only needs to be legible. Velocity still shades both.
+        const alpha = Math.min(0.95, strength * (EMPHASIS[verdict ?? ''] ?? 1) * fade);
+        context.fillStyle = `rgba(${colour}, ${alpha.toFixed(3)})`;
         const radius = Math.min(4, wide / 2, tall / 2);
         context.beginPath();
         // Rounded corners where the browser has them; square is no tragedy.
@@ -116,6 +163,12 @@ export function PianoRoll({ notes, lowest, highest, running = true }: PianoRollP
         if (typeof rounded.roundRect === 'function') rounded.roundRect(x, y, wide, tall, radius);
         else context.rect(x, y, wide, tall);
         context.fill();
+      }
+
+      // Forget notes that have left the strip, so the cache cannot grow
+      // through a long session.
+      if (kept.size > live.size) {
+        for (const id of kept.keys()) if (!live.has(id)) kept.delete(id);
       }
 
       if (!loop) return;

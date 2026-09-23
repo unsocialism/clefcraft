@@ -18,12 +18,13 @@ import {
 import { openLibrary, type Library, type ScoreEntry } from './core/library/library.ts';
 import { MidiFileError, parseMidiFile } from './core/midi/midiFile.ts';
 import type { MidiEvent } from './core/midi/types.ts';
+import type { PressRecord } from './core/score/practiceEngine.ts';
 import { scoreFromMidi, type MidiScore } from './core/score/midiScore.ts';
 import { scoreFromPdfNotes } from './core/score/pdfScore.ts';
 import { toMidiFile, toMusicXml } from './core/score/exportScore.ts';
 import { EMPTY_SCORE } from './core/score/types.ts';
 import type { PdfReadResult } from './core/pdf/pdfNotes.ts';
-import { usePianoInput } from './hooks/usePianoInput.ts';
+import { usePianoInput, type EventOrigin } from './hooks/usePianoInput.ts';
 import { useImmersive } from './hooks/useImmersive.ts';
 import { DEFAULT_METER, usePractice } from './hooks/usePractice.ts';
 import { TRAIL_MOMENTS, useLiveTrail } from './hooks/useLiveTrail.ts';
@@ -48,6 +49,9 @@ import { TrainingControls, TrainingSummary } from './ui/training/TrainingControl
 import { TrainingSheet } from './ui/training/TrainingSheet.tsx';
 
 type AppMode = 'free' | 'practice' | 'training';
+
+/** Nothing judged these — free play. A constant, so it never re-renders. */
+const NO_VERDICTS: readonly PressRecord[] = [];
 
 const MODES: readonly { id: AppMode; label: string }[] = [
   { id: 'free', label: 'Free play' },
@@ -138,27 +142,47 @@ export function App() {
   const recorder = useRecorder();
   const recordMidi = recorder.handleMidi;
 
-  // And it always keeps the last few seconds, for the running staff and the
-  // roll above the keys. Both are fed from one fold of the events.
+  // The last few seconds of playing, kept in every tab: it feeds the roll
+  // above the keys everywhere, and the running staff in free play. One fold
+  // of the events, whoever else is listening to them.
   const trail = useLiveTrail();
   const trailMidi = trail.handleMidi;
-  const freeMidi = useCallback(
-    (event: MidiEvent) => {
+  const liveMidi = useCallback(
+    (event: MidiEvent, origin: EventOrigin, portId: string | null) => {
       trailMidi(event);
-      recordMidi(event);
+      if (inPractice) handleMidi(event, origin, portId);
+      else if (inTraining) trainingMidi(event, origin, portId);
+      else recordMidi(event);
     },
-    [trailMidi, recordMidi],
+    [trailMidi, inPractice, inTraining, handleMidi, trainingMidi, recordMidi],
   );
 
   const piano = usePianoInput(
     useMemo(
       () => ({
-        onEvent: inPractice ? handleMidi : inTraining ? trainingMidi : inFree ? freeMidi : undefined,
+        onEvent: liveMidi,
         onRawMessage: inPractice ? handleRawMessage : inTraining ? trainingRaw : undefined,
       }),
-      [inPractice, inTraining, inFree, handleMidi, handleRawMessage, trainingMidi, trainingRaw, freeMidi],
+      [liveMidi, inPractice, inTraining, handleRawMessage, trainingRaw],
     ),
   );
+
+  // Each tab starts with a clear strip: what you played in another one is
+  // not what you are playing here.
+  const clearTrail = trail.clear;
+  useEffect(() => {
+    clearTrail();
+  }, [appMode, clearTrail]);
+
+  /**
+   * What the engine of the open tab made of the last few presses, for the
+   * roll to colour them by. Free play judges nothing.
+   */
+  const verdicts = inPractice
+    ? practice.state.recent
+    : inTraining
+      ? training.practice.state.recent
+      : NO_VERDICTS;
 
   // Leaving free play stops a running recording. The keys go to whichever
   // tab is open, so carrying on would leave a take with a silent hole in it
@@ -1014,7 +1038,7 @@ export function App() {
 
       <div className="app__bottom">
         <PianoKeyboard
-          above={inFree ? <PianoRoll notes={trail.notes} running={inFree} /> : null}
+          above={<PianoRoll notes={trail.notes} verdicts={verdicts} />}
           active={piano.notes}
           guides={guides}
           fifths={fifths}

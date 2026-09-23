@@ -104,6 +104,47 @@ function release(notes: readonly LiveNote[], midi: number, at: number): LiveNote
   return [...notes];
 }
 
+/**
+ * What the practice engine made of a key press, as much of it as the roll
+ * needs. Structural on purpose: the trail knows nothing about practice, and
+ * practice knows nothing about the trail.
+ */
+export interface Judged {
+  readonly midi: number;
+  readonly verdict: string;
+  readonly at: number;
+}
+
+/** How far apart two readings of the same press can be and still be it. */
+const SAME_PRESS_MS = 120;
+
+/**
+ * The verdict on a note of the trail, or null when nothing judged it.
+ *
+ * The two are matched by pitch and time rather than by identity: the trail
+ * and the practice engine each stamp the press with their own reading of the
+ * clock, a millisecond or two apart, and neither hands the other an id. The
+ * nearest press of the same pitch within a tenth of a second is that press —
+ * nobody plays the same key twice that fast.
+ */
+export function verdictOf(
+  note: { readonly midi: number; readonly startMs: number },
+  judged: readonly Judged[],
+  toleranceMs = SAME_PRESS_MS,
+): string | null {
+  let best: Judged | null = null;
+  let closest = Infinity;
+  for (const press of judged) {
+    if (press.midi !== note.midi) continue;
+    const apart = Math.abs(press.at - note.startMs);
+    if (apart <= toleranceMs && apart < closest) {
+      closest = apart;
+      best = press;
+    }
+  }
+  return best?.verdict ?? null;
+}
+
 export interface Moment {
   /** The id of its first note, so React can tell one moment from another. */
   readonly id: number;

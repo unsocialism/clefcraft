@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { EMPTY_TRAIL, momentsOf, trailEvent, type TrailState } from './trail.ts';
+import { EMPTY_TRAIL, momentsOf, trailEvent, verdictOf, type TrailState } from './trail.ts';
 import type { MidiEvent } from './types.ts';
 
 const on = (note: number, velocity = 80): MidiEvent => ({
@@ -176,5 +176,41 @@ describe('reading the trail as moments', () => {
 
   it('has nothing to show before anything is played', () => {
     assert.deepEqual(momentsOf([]), []);
+  });
+});
+
+describe('matching a note to what the engine made of it', () => {
+  const note = (midi: number, startMs: number) => ({ midi, startMs });
+
+  it('finds the press it was, allowing for two readings of the clock', () => {
+    const judged = [
+      { midi: 62, verdict: 'wrong', at: 1503 },
+      { midi: 60, verdict: 'correct', at: 1002 },
+    ];
+    assert.equal(verdictOf(note(60, 1000), judged), 'correct');
+    assert.equal(verdictOf(note(62, 1500), judged), 'wrong');
+  });
+
+  it('takes the nearest press of that pitch, not merely the first', () => {
+    const judged = [
+      { midi: 60, verdict: 'wrong', at: 2000 },
+      { midi: 60, verdict: 'correct', at: 1000 },
+    ];
+    assert.equal(verdictOf(note(60, 1990), judged), 'wrong');
+    assert.equal(verdictOf(note(60, 1010), judged), 'correct');
+  });
+
+  it('says nothing about a note nothing judged', () => {
+    assert.equal(verdictOf(note(60, 1000), []), null, 'free play judges nothing');
+    assert.equal(
+      verdictOf(note(60, 1000), [{ midi: 64, verdict: 'correct', at: 1000 }]),
+      null,
+      'another key at the same moment is not this one',
+    );
+    assert.equal(
+      verdictOf(note(60, 1000), [{ midi: 60, verdict: 'correct', at: 4000 }]),
+      null,
+      'and the same key three seconds later is a different press',
+    );
   });
 });

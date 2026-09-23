@@ -108,12 +108,16 @@ signatures are taken from the file, and percussion (channel 10) is left out.
 So the notation is a fair reading of the performance rather than a
 reconstruction of the original score; the pitches and their order are exact.
 
-## The live view in free play
+## The live view
 
-Two views of the same playing, one answering *what* and the other *how*.
+Two views of the same playing, one answering *what* and the other *how*. The
+running staff belongs to free play; the roll is above the keys in all three
+tabs, and in Practice and Training it says whether the note was the one asked
+for. Each tab starts with a clear strip — what you played in another one is not
+what you are playing here.
 
-**A running staff.** The staff keeps the last eight moments rather than only
-what is under your fingers: the newest in blue at the right, the ones before it
+**A running staff** (free play). It keeps the last eight moments rather than
+only what is under your fingers: the newest in blue at the right, the ones before it
 fading back, so a phrase can be read after it has been played. A chord is one
 moment, not three notes — the few milliseconds between the keys of a chord are
 not three separate events. The moments sit in fixed slots and the whole staff
@@ -121,8 +125,8 @@ slides one slot left as a new one arrives, because notes finding new positions
 on every keypress is unreadable. There is no rhythm in it: each moment is one
 note, however long you held it.
 
-**A piano roll.** Above the keys, each note appears the moment it is struck,
-grows while you hold it, and drifts up and out — the half the staff cannot tell
+**A piano roll** (every tab). Above the keys, each note appears the moment it
+is struck, grows while you hold it, and drifts up and out — the half the staff cannot tell
 you: how long each key was down, and how evenly the notes fell. It travels at a
 set speed, 88 pixels a second, rather than holding a set number of seconds of
 history: a second of playing then draws the same bar whatever the strip's
@@ -137,6 +141,23 @@ its key at any width and scrolls sideways with the keys on a phone. When
 nothing is sounding and nothing is still on screen it stops animating and looks
 again a few times a second, so an open tab on a phone is not sixty wasted
 frames a second.
+
+**Right and wrong, where something is judging.** In Practice and Training each
+note is coloured by what the engine made of the press: green for the note that
+was asked for, red for a wrong key, amber for the right key played too late to
+count as part of its chord. Free play judges nothing, so everything there stays
+plain blue. It is a record, not a hint — nothing is coloured until after you
+have played it, so Training's rule that the keyboard stays dark until a wrong
+key is untouched, and a run of stumbles is visible as a pattern rather than as
+a number at the end.
+
+The roll and the practice engine never meet: each stamps a press with its own
+reading of the clock, and the two are matched by pitch and time — the nearest
+press of the same pitch within a tenth of a second is that press, since nobody
+plays a key twice that fast. A verdict is kept once seen, because the engine
+remembers only the last eight presses and a note stays on screen longer than
+that in a quick passage; a note that turned green must not turn blue again as
+it rises.
 
 ## Recording free play
 
@@ -445,7 +466,7 @@ would need a native CoreMIDI bridge behind the same interface.
 
 ## What has and has not been tested
 
-**Verified:** 385 unit tests — among them pitch spelling across all 15 keys
+**Verified:** 388 unit tests — among them pitch spelling across all 15 keys
 and all 88 notes, MIDI parsing, the sustain pedal, the practice state
 machine and its chord window, PDF reading against real Sibelius and
 MuseScore exports, corrections, the device library, the training
@@ -462,8 +483,9 @@ no second count-in when the tempo slider moves), and the hide-the-controls
 gestures at phone size, and recording free play end to end — played in,
 written out, saved, reopened from the library and read back as a score, and
 the live view — the trail marching, the roll animating only while something
-is moving, and each note drawn over its own key to the pixel at both desktop
-and phone widths. The training sheet was checked with the real VexFlow.
+is moving, each note drawn over its own key to the pixel at both desktop and
+phone widths, and the roll colouring right and wrong in Practice and Training
+while staying plain in free play. The training sheet was checked with the real VexFlow.
 
 **Not verified:** **OpenSheetMusicDisplay** (MusicXML engraving) has only run
 against a recording stub, not the real library, and the touch gestures have
