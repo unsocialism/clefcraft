@@ -3,6 +3,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { MidiEvent, RawMidiMessage } from '../core/midi/types.ts';
 import type { EventOrigin } from './usePianoInput.ts';
 import {
+  CLOCK_IDLE,
+  beatQuartersFor,
+  countInQuartersFor,
+  readClock,
+  type ClockReading,
+} from '../core/score/clock.ts';
+import {
   DEFAULT_PRACTICE_OPTIONS,
   advanceToTime,
   attemptExpiresIn,
@@ -36,6 +43,15 @@ export interface PracticeSession {
   readonly chordWindowMs: number | null;
   readonly tempoBpm: number;
   readonly running: boolean;
+  /** Beats in a bar and what a beat is worth, for the count-in and the pulse. */
+  readonly meter: Meter;
+  /**
+   * The play-along clock, updated every frame while it runs. A ref rather
+   * than state on purpose: a line that sweeps across the page has to move
+   * sixty times a second, and re-rendering the app that often to move it
+   * would cost far more than moving it does.
+   */
+  readonly clock: { readonly current: ClockReading };
   /** Current event plus lookahead, for the keyboard strip. */
   readonly ahead: ReturnType<typeof upcoming>;
   readonly progress: number;
@@ -61,6 +77,7 @@ export interface PracticeSession {
   setChordWindowMs(ms: number | null): void;
   setIgnoreDuplicatesMs(ms: number | null): void;
   setTempoBpm(bpm: number): void;
+  setMeter(meter: Meter): void;
   start(): void;
   pause(): void;
   restart(): void;
@@ -71,6 +88,15 @@ export interface PracticeSession {
 }
 
 const LOOKAHEAD = 3;
+
+export interface Meter {
+  readonly beats: number;
+  /** 4 for quarter-note beats, 8 for eighths, and so on. */
+  readonly beatType: number;
+}
+
+/** What to assume when nothing says otherwise. */
+export const DEFAULT_METER: Meter = { beats: 4, beatType: 4 };
 
 /**
  * Default chord timing window. 120ms is comfortably wider than the spread of
@@ -86,6 +112,13 @@ export function usePractice(): PracticeSession {
   const [chordWindowMs, setChordWindowMs] = useState<number | null>(DEFAULT_CHORD_WINDOW_MS);
   const [tempoBpm, setTempoBpm] = useState(80);
   const [running, setRunning] = useState(false);
+  const [meter, setMeter] = useState<Meter>(DEFAULT_METER);
+  const clock = useRef<ClockReading>(CLOCK_IDLE);
+  // Set when Play is pressed, and cleared once the count-in it asks for has
+  // been given. Changing the tempo while the piece runs restarts the clock
+  // effect below, and counting you in again mid-piece would be worse than
+  // useless.
+  const countInRef = useRef(false);
   const [arrivals, setArrivals] = useState<readonly Arrival[]>([]);
   const [ignoreDuplicatesMs, setIgnoreDuplicatesMs] = useState<number | null>(null);
   const [rawMessages, setRawMessages] = useState<readonly RawMidiMessage[]>([]);
@@ -182,37 +215,72 @@ export function usePractice(): PracticeSession {
     setState(seekToMeasure(scoreRef.current, measure));
   }, []);
 
-  const start = useCallback(() => setRunning(true), []);
+  const start = useCallback(() => {
+    countInRef.current = true;
+    setRunning(true);
+  }, []);
   const pause = useCallback(() => setRunning(false), []);
 
   // Tempo mode clock. Driven by requestAnimationFrame against wall time so a
   // dropped frame does not slow the piece down.
   useEffect(() => {
-    if (!running || mode !== 'tempo') return;
+    if (!running || mode !== 'tempo') {
+      clock.current = CLOCK_IDLE;
+      return;
+    }
     if (score.events.length === 0) return;
 
     const quartersPerMs = tempoBpm / 60 / 1000;
     const startEvent = currentEvent(score, state);
     const startQuarters = startEvent?.onsetQuarters ?? 0;
+    const beatQuarters = beatQuartersFor(meter.beatType);
+    // A bar of beats before the music moves, so you can come in with it
+    // rather than chase it from a standing start.
+    const countInQuarters = countInRef.current
+      ? countInQuartersFor(meter.beats, meter.beatType)
+      : 0;
+    countInRef.current = false;
     const startedAt = performance.now();
     let frame = 0;
+    // Set before the first frame, so nothing reads the clock as idle in the
+    // moment between Play and the frame that follows it.
+    clock.current = readClock({
+      elapsedQuarters: 0,
+      startQuarters,
+      countInQuarters,
+      beatQuarters,
+      beatsPerBar: meter.beats,
+    });
 
     const tick = () => {
-      const elapsed = (performance.now() - startedAt) * quartersPerMs;
-      const at = startQuarters + elapsed;
-      setState((previous) => advanceToTime(scoreRef.current, previous, at));
-      if (at >= scoreLengthQuarters(scoreRef.current)) {
-        setRunning(false);
-        return;
+      const elapsedQuarters = (performance.now() - startedAt) * quartersPerMs;
+      const reading = readClock({
+        elapsedQuarters,
+        startQuarters,
+        countInQuarters,
+        beatQuarters,
+        beatsPerBar: meter.beats,
+      });
+      clock.current = reading;
+      if (!reading.countingIn) {
+        setState((previous) => advanceToTime(scoreRef.current, previous, reading.quarters));
+        if (reading.quarters >= scoreLengthQuarters(scoreRef.current)) {
+          clock.current = CLOCK_IDLE;
+          setRunning(false);
+          return;
+        }
       }
       frame = requestAnimationFrame(tick);
     };
     frame = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(frame);
+    return () => {
+      cancelAnimationFrame(frame);
+      clock.current = CLOCK_IDLE;
+    };
     // `state` is intentionally not a dependency: the clock reads its start
     // point once and then owns the cursor until paused.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [running, mode, tempoBpm, score]);
+  }, [running, mode, tempoBpm, score, meter]);
 
   // Abandon a half-played chord once its window closes. Without this the
   // partial attempt never expires on its own: the keys already pressed stay
@@ -240,6 +308,8 @@ export function usePractice(): PracticeSession {
     chordWindowMs,
     tempoBpm,
     running,
+    meter,
+    clock,
     ahead,
     progress,
     arrivals,
@@ -251,6 +321,7 @@ export function usePractice(): PracticeSession {
     setChordWindowMs,
     setIgnoreDuplicatesMs,
     setTempoBpm,
+    setMeter,
     start,
     pause,
     restart,

@@ -1332,3 +1332,127 @@ body {
   white-space: nowrap;
   cursor: default;
 }
+
+/* ---------- following along: the beat pulse and the count-in ---------- */
+
+/* A metronome for the eyes. It sits beside the tempo, where you look
+   while setting it. */
+.beat {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.beat--count {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.beat__label {
+  font-weight: 600;
+}
+
+.beat__dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.beat__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--border);
+  transition: background-color 120ms linear;
+}
+
+.beat__dot--done {
+  background: var(--accent-soft);
+}
+
+.beat__dot--on {
+  background: var(--accent);
+  animation: beat-pulse 220ms ease-out;
+}
+
+.beat__number {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--text);
+  min-width: 1ch;
+  text-align: right;
+}
+
+@keyframes beat-pulse {
+  0% { transform: scale(2.1); }
+  100% { transform: scale(1); }
+}
+
+/* The count-in, over the music: large enough to read from the keyboard,
+   and never in the way of a click. */
+.count-in {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  pointer-events: none;
+}
+
+.count-in__number {
+  font-size: clamp(5rem, 22vmin, 12rem);
+  font-weight: 700;
+  line-height: 1;
+  color: var(--accent);
+  text-shadow: 0 2px 18px rgba(0, 0, 0, 0.18);
+  animation: count-in 520ms ease-out forwards;
+}
+
+.count-in__of {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: var(--surface);
+  border-radius: 999px;
+  padding: 3px 12px;
+  opacity: 0.9;
+}
+
+@keyframes count-in {
+  0% { opacity: 1; transform: scale(0.72); }
+  30% { opacity: 0.95; transform: scale(1.04); }
+  100% { opacity: 0.4; transform: scale(1); }
+}
+
+/* The sweeping line on the engraved sheet. Drawn by MidiSheet; styled here
+   so the count-in blink and reduced motion are in one place. */
+.midi-sheet__playhead--count {
+  animation: playhead-wait 900ms ease-in-out infinite alternate;
+}
+
+@keyframes playhead-wait {
+  0% { opacity: 0.35; }
+  100% { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .beat__dot--on,
+  .count-in__number,
+  .midi-sheet__playhead--count {
+    animation: none;
+  }
+
+  .count-in__number {
+    opacity: 0.6;
+  }
+}

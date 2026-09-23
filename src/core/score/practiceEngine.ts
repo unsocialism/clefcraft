@@ -263,8 +263,12 @@ export function advanceToTime(
   const end = last ? last.onsetQuarters + last.durationQuarters : 0;
   const finished = quarters >= end - 1e-9;
 
-  if (target === -1) return { ...state, finished };
-  if (target === state.index) return { ...state, finished };
+  // The clock asks this sixty times a second and the answer is usually
+  // "still on the same note", so the same state is handed straight back:
+  // an identical object is what lets React skip the render.
+  if (target === -1 || target === state.index) {
+    return state.finished === finished ? state : { ...state, finished };
+  }
   return {
     ...state,
     index: target,

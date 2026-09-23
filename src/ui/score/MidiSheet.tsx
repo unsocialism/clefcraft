@@ -13,8 +13,10 @@ import {
 } from 'vexflow';
 
 import { keySignatureByFifths } from '../../core/music/keySignature.ts';
+import type { ClockReading } from '../../core/score/clock.ts';
 import type { EngravedEntry, EngravedMeasure, MidiScore } from '../../core/score/midiScore.ts';
 import { keepInView } from '../keepInView.ts';
+import { anchorsFrom, playheadAt, type Anchor, type MappedBar, type TimeMap } from './playhead.ts';
 
 /* Layout in VexFlow's own units; the whole sheet is scaled to the width it
  * is given, the same way the training sheet is. */
@@ -36,6 +38,10 @@ const LEFT = '#e07b00';
 const NOW_BG_RIGHT = 'rgba(47, 109, 246, 0.13)';
 const NOW_BG_LEFT = 'rgba(240, 140, 0, 0.16)';
 const NOW_BG_BOTH = 'rgba(92, 104, 128, 0.13)';
+const PLAYHEAD = 'rgba(124, 58, 237, 0.6)';
+const PLAYHEAD_WIDTH = 3;
+/** Room above the treble staff and below the bass staff for the line. */
+const PLAYHEAD_OVERHANG = 14;
 
 export interface MidiSheetProps {
   readonly midiScore: MidiScore;
@@ -43,6 +49,13 @@ export interface MidiSheetProps {
   readonly currentEvent: number | null;
   /** Scroll the current bar into view as it moves. */
   readonly follow?: boolean;
+  /**
+   * The play-along clock. While it is running a line sweeps the music in
+   * time with it, so the beat can be seen coming rather than inferred from
+   * the note that just went past.
+   */
+  readonly clock?: { readonly current: ClockReading } | null;
+  readonly playing?: boolean;
 }
 
 function keysOf(entry: EngravedEntry, clef: 'treble' | 'bass'): string[] {
@@ -121,7 +134,13 @@ function buildBar(measure: EngravedMeasure, index: number): Built {
   };
 }
 
-function draw(host: HTMLDivElement, shownWidth: number, midiScore: MidiScore): Map<number, Spot> {
+interface Engraving {
+  readonly spots: Map<number, Spot>;
+  /** Where each moment of music ended up, for the sweeping line. */
+  readonly times: TimeMap;
+}
+
+function draw(host: HTMLDivElement, shownWidth: number, midiScore: MidiScore): Engraving {
   host.replaceChildren();
   const key = keySignatureByFifths(midiScore.fifths);
   const leadIn = LEAD_IN + Math.abs(midiScore.fifths) * KEY_WIDTH;
@@ -158,6 +177,7 @@ function draw(host: HTMLDivElement, shownWidth: number, midiScore: MidiScore): M
   const context = renderer.getContext();
 
   const drawn = new Map<number, Drawn[]>();
+  const times: MappedBar[] = [];
   // The note at the end of the previous bar, per staff, when it is tied
   // into this one. A tie cannot cross a line, so it is dropped there.
   let pendingTies: (StaveNote | null)[] = [null, null];
@@ -250,6 +270,26 @@ function draw(host: HTMLDivElement, shownWidth: number, midiScore: MidiScore): M
         new StaveTie({ first_note: tie.from, last_note: tie.to }).setContext(context).draw();
       }
 
+      // Where this bar's moments landed. Read after formatting, because that
+      // is when the notes acquire the positions they are drawn at.
+      const points: Anchor[] = [];
+      ([0, 1] as const).forEach((staff) => {
+        bar.measure.staves[staff].forEach((entry, i) => {
+          const note = bar.notes[staff][i];
+          if (note) points.push({ quarters: entry.onsetQuarters, x: note.getAbsoluteX() });
+        });
+      });
+      const barStart =
+        bar.measure.staves[0][0]?.onsetQuarters ?? bar.measure.staves[1][0]?.onsetQuarters ?? 0;
+      const barLength = (bar.measure.beats * 4) / bar.measure.beatType;
+      times.push({
+        startQuarters: barStart,
+        endQuarters: barStart + barLength,
+        top: treble.getYForLine(0) - PLAYHEAD_OVERHANG,
+        bottom: bass.getYForLine(4) + PLAYHEAD_OVERHANG,
+        anchors: anchorsFrom(points, { quarters: barStart + barLength, x: x + w }),
+      });
+
       x += w;
     });
   });
@@ -276,7 +316,8 @@ function draw(host: HTMLDivElement, shownWidth: number, midiScore: MidiScore): M
       staves: new Set(items.map((item) => item.staff)),
     });
   }
-  return spots;
+  times.sort((a, b) => a.startQuarters - b.startQuarters);
+  return { spots, times };
 }
 
 /**
@@ -310,6 +351,42 @@ function placeBand(host: HTMLDivElement, spot: Spot | undefined): void {
 }
 
 /**
+ * Put the sweeping line where the clock says the music is.
+ *
+ * Like the band, this moves an element that is already on the page rather
+ * than drawing anything: it runs every frame, and re-rendering for it would
+ * be sixty renders a second of a piece that has not changed.
+ */
+function placePlayhead(
+  host: HTMLDivElement,
+  times: TimeMap,
+  reading: ClockReading | null,
+): void {
+  const svg = host.querySelector('svg');
+  if (!svg) return;
+  const existing = svg.querySelector('.midi-sheet__playhead');
+  const spot = reading ? playheadAt(times, reading.quarters) : null;
+  if (!spot) {
+    existing?.remove();
+    return;
+  }
+  const line = existing ?? document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+  line.setAttribute('x', String(spot.x - PLAYHEAD_WIDTH / 2));
+  line.setAttribute('y', String(spot.top));
+  line.setAttribute('width', String(PLAYHEAD_WIDTH));
+  line.setAttribute('height', String(Math.max(1, spot.bottom - spot.top)));
+  line.setAttribute('rx', String(PLAYHEAD_WIDTH / 2));
+  line.setAttribute('fill', PLAYHEAD);
+  // Counting in, it waits at the note it is about to set off from, blinking
+  // with the beat so it is clear nothing has gone wrong.
+  line.setAttribute(
+    'class',
+    reading?.countingIn ? 'midi-sheet__playhead midi-sheet__playhead--count' : 'midi-sheet__playhead',
+  );
+  if (!existing) svg.appendChild(line);
+}
+
+/**
  * A MIDI file engraved.
  *
  * Drawing every bar of a long piece at once is what makes following it
@@ -319,9 +396,16 @@ function placeBand(host: HTMLDivElement, spot: Spot | undefined): void {
  * *bar* changes, not the note: the band that marks what is due now moves
  * within a bar without touching the engraving.
  */
-export function MidiSheet({ midiScore, currentEvent, follow = false }: MidiSheetProps) {
+export function MidiSheet({
+  midiScore,
+  currentEvent,
+  follow = false,
+  clock = null,
+  playing = false,
+}: MidiSheetProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const spotsRef = useRef<Map<number, Spot>>(new Map());
+  const timesRef = useRef<TimeMap>([]);
   const [width, setWidth] = useState(900);
   const [error, setError] = useState<string | null>(null);
 
@@ -345,10 +429,13 @@ export function MidiSheet({ midiScore, currentEvent, follow = false }: MidiSheet
     const host = hostRef.current;
     if (!host) return;
     try {
-      spotsRef.current = draw(host, width, midiScore);
+      const engraving = draw(host, width, midiScore);
+      spotsRef.current = engraving.spots;
+      timesRef.current = engraving.times;
       setError(null);
     } catch (cause) {
       spotsRef.current = new Map();
+      timesRef.current = [];
       setError(cause instanceof Error ? cause.message : String(cause));
     }
   }, [midiScore, width]);
@@ -359,6 +446,28 @@ export function MidiSheet({ midiScore, currentEvent, follow = false }: MidiSheet
     placeBand(host, currentEvent === null ? undefined : spotsRef.current.get(currentEvent));
     if (follow) keepInView(host.querySelector('.midi-sheet__now'));
   }, [currentEvent, follow, width, midiScore, error]);
+
+  // The sweeping line, driven by the clock rather than by React: it reads
+  // the position every frame and moves one rectangle.
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host) return;
+    if (!clock || !playing) {
+      placePlayhead(host, timesRef.current, null);
+      return;
+    }
+    let frame = 0;
+    const tick = () => {
+      placePlayhead(host, timesRef.current, clock.current);
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => {
+      cancelAnimationFrame(frame);
+      const still = hostRef.current;
+      if (still) placePlayhead(still, timesRef.current, null);
+    };
+  }, [clock, playing, width, midiScore, error]);
 
   return (
     <div className="staff midi-sheet">

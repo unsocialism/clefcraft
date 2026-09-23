@@ -183,9 +183,28 @@ first note of a fresh attempt, not as a mistake: playing raggedly should mean
 entirely, because a mouse can only press one key at a time.
 
 **Play along.** A clock drives the cursor at the tempo in the file (or
-whatever you set), and keeps going whether you keep up or not.
+whatever you set), and keeps going whether you keep up or not. Three things
+make it followable:
 
-Both count mistakes and clean events, and you can jump to any measure.
+- **A count-in.** One bar of the piece's own meter before the music moves,
+  counted in big figures over the page, so you come in with it rather than
+  chasing it from a standing start. It is given every time you press Play,
+  including after a pause, but not when you only move the tempo slider.
+- **A sweeping line.** On a MIDI score, a violet line glides across the
+  staves in time with the clock. It is pinned to where the notes were
+  actually engraved rather than swept at a constant speed, so it reaches
+  each note exactly when the note is due — and between notes it shows you
+  the beat coming instead of leaving you to infer it from the note that has
+  just gone past.
+- **A beat pulse.** A dot per beat of the bar beside the tempo slider,
+  lighting up as the bar comes round: a metronome you can see, since the app
+  makes no sound.
+
+The line and the pulse are driven straight from the clock rather than from
+React state, so they move every frame without re-rendering the app sixty
+times a second.
+
+Both modes count mistakes and clean events, and you can jump to any measure.
 
 ## Browser support
 
@@ -333,7 +352,7 @@ would need a native CoreMIDI bridge behind the same interface.
 
 ## What has and has not been tested
 
-**Verified:** 324 unit tests — among them pitch spelling across all 15 keys
+**Verified:** 343 unit tests — among them pitch spelling across all 15 keys
 and all 88 notes, MIDI parsing, the sustain pedal, the practice state
 machine and its chord window, PDF reading against real Sibelius and
 MuseScore exports, corrections, the device library, and the training
@@ -341,8 +360,10 @@ generator (ranges, stepwise motion, hand changes, accidentals, intervals).
 End-to-end in headless Chromium: all three modes, PDF reading and
 correcting, the library across reloads, offline use through the service
 worker, playing training exercises through (including a simulated MIDI
-piano for the chord timing), and the hide-the-controls gestures at phone
-size. The training sheet was checked with the real VexFlow.
+piano for the chord timing), the play-along count-in, sweeping line and
+beat pulse (counted in at the right note, sweeping between the right ones,
+no second count-in when the tempo slider moves), and the hide-the-controls
+gestures at phone size. The training sheet was checked with the real VexFlow.
 
 **Not verified:** **OpenSheetMusicDisplay** (MusicXML engraving) has only run
 against a recording stub, not the real library, and the touch gestures have

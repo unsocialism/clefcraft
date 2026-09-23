@@ -1,7 +1,9 @@
-import { DEFAULT_CHORD_WINDOW_MS } from '../../hooks/usePractice.ts';
+import { DEFAULT_CHORD_WINDOW_MS, type Meter } from '../../hooks/usePractice.ts';
+import type { ClockReading } from '../../core/score/clock.ts';
 import type { PracticeMode } from '../../core/score/practiceEngine.ts';
 import type { Score } from '../../core/score/types.ts';
 import type { PracticeState } from '../../core/score/practiceEngine.ts';
+import { BeatPulse } from './BeatPulse.tsx';
 
 export interface PracticeControlsProps {
   readonly score: Score;
@@ -12,6 +14,8 @@ export interface PracticeControlsProps {
   readonly tempoBpm: number;
   readonly running: boolean;
   readonly progress: number;
+  readonly meter: Meter;
+  readonly clock: { readonly current: ClockReading } | null;
   onModeChange(mode: PracticeMode): void;
   onRequireCleanChange(value: boolean): void;
   onChordWindowChange(ms: number | null): void;
@@ -31,6 +35,8 @@ export function PracticeControls({
   tempoBpm,
   running,
   progress,
+  meter,
+  clock,
   onModeChange,
   onRequireCleanChange,
   onChordWindowChange,
@@ -73,6 +79,7 @@ export function PracticeControls({
             >
               {running ? 'Pause' : 'Play'}
             </button>
+            <BeatPulse clock={clock} playing={running} meter={meter} />
             <label className="toolbar__field">
               <span>Tempo · {tempoBpm} bpm</span>
               <input

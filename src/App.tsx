@@ -24,13 +24,14 @@ import { EMPTY_SCORE } from './core/score/types.ts';
 import type { PdfReadResult } from './core/pdf/pdfNotes.ts';
 import { usePianoInput } from './hooks/usePianoInput.ts';
 import { useImmersive } from './hooks/useImmersive.ts';
-import { usePractice } from './hooks/usePractice.ts';
+import { DEFAULT_METER, usePractice } from './hooks/usePractice.ts';
 import { useTraining } from './hooks/useTraining.ts';
 import { GrandStaff } from './ui/GrandStaff.tsx';
 import { NoteReadout } from './ui/NoteReadout.tsx';
 import { PianoKeyboard, type KeyGuide } from './ui/PianoKeyboard.tsx';
 import { Toolbar } from './ui/Toolbar.tsx';
 import { PdfView, type EditAction } from './ui/pdf/PdfView.tsx';
+import { CountIn } from './ui/practice/BeatPulse.tsx';
 import { PracticeControls } from './ui/practice/PracticeControls.tsx';
 import { MidiMonitor } from './ui/practice/MidiMonitor.tsx';
 import { ScoreLibrary } from './ui/practice/ScoreLibrary.tsx';
@@ -95,7 +96,17 @@ export function App() {
   const keepPositionRef = useRef(false);
 
   const practice = usePractice();
-  const { handleMidi, handleRawMessage, setScore } = practice;
+  const { handleMidi, handleRawMessage, setScore, setMeter } = practice;
+
+  // The meter the count-in counts and the pulse beats in. A MIDI file states
+  // it; nothing else we read does, so four in a bar is the assumption.
+  useEffect(() => {
+    const first = midiScore?.measures[0];
+    setMeter(first ? { beats: first.beats, beatType: first.beatType } : DEFAULT_METER);
+  }, [midiScore, setMeter]);
+
+  /** Play along is running: the clock is moving and the line sweeps. */
+  const playingAlong = practice.running && practice.mode === 'tempo';
 
   // Training runs its own practice engine, so a piece you are working on
   // keeps its place while you do a few reading exercises in between.
@@ -600,6 +611,8 @@ export function App() {
                   tempoBpm={practice.tempoBpm}
                   running={practice.running}
                   progress={practice.progress}
+                  meter={practice.meter}
+                  clock={practice.clock}
                   onModeChange={practice.setMode}
                   onRequireCleanChange={practice.setRequireClean}
                   onChordWindowChange={practice.setChordWindowMs}
@@ -809,6 +822,8 @@ export function App() {
                 midiScore={midiScore}
                 currentEvent={practice.state.finished ? null : practice.state.index}
                 follow
+                clock={practice.clock}
+                playing={playingAlong}
               />
             )}
 
@@ -905,6 +920,11 @@ export function App() {
         />
         {piano.noteState.pedal && <span className="badge badge--pedal">Sustain pedal down</span>}
       </div>
+
+      {/* Over everything, because the controls it belongs to can be hidden. */}
+      {inPractice && (
+        <CountIn clock={practice.clock} playing={playingAlong} meter={practice.meter} />
+      )}
     </div>
   );
 }

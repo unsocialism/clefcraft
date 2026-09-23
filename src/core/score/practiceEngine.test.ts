@@ -179,6 +179,20 @@ describe('tempo mode', () => {
     assert.equal(state.totalMistakes, 1);
   });
 
+  it('hands the same state back when the clock has not reached the next note', () => {
+    // The clock asks every frame; an unchanged answer must be the same
+    // object, or the app re-renders sixty times a second for nothing.
+    const state = startPractice(C_MAJOR_SCALE);
+    assert.equal(advanceToTime(C_MAJOR_SCALE, state, 0.1), state);
+    assert.equal(advanceToTime(C_MAJOR_SCALE, state, 0.9), state);
+    assert.notEqual(advanceToTime(C_MAJOR_SCALE, state, 1), state, 'but not once it has');
+    assert.notEqual(
+      advanceToTime(C_MAJOR_SCALE, state, 99),
+      state,
+      'nor when the piece finishes under a held note',
+    );
+  });
+
   it('clears progress when the clock moves on', () => {
     let state = startPractice(C_MAJOR_SCALE);
     state = pressNote(C_MAJOR_SCALE, state, 60, TEMPO);
