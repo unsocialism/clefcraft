@@ -16,7 +16,14 @@ import { keySignatureByFifths } from '../../core/music/keySignature.ts';
 import type { ClockReading } from '../../core/score/clock.ts';
 import type { EngravedEntry, EngravedMeasure, MidiScore } from '../../core/score/midiScore.ts';
 import { keepInView } from '../keepInView.ts';
-import { anchorsFrom, playheadAt, type Anchor, type MappedBar, type TimeMap } from './playhead.ts';
+import {
+  anchorsFrom,
+  playheadAt,
+  type Anchor,
+  type MappedBar,
+  type PlayheadSpot,
+  type TimeMap,
+} from './playhead.ts';
 
 /* Layout in VexFlow's own units; the whole sheet is scaled to the width it
  * is given, the same way the training sheet is. */
@@ -401,6 +408,39 @@ function placeBand(host: HTMLDivElement, spot: Spot | undefined): void {
  * than drawing anything: it runs every frame, and re-rendering for it would
  * be sixty renders a second of a piece that has not changed.
  */
+/**
+ * Where the line stands, counting in included.
+ *
+ * Through the count-in it does not wait at the first note: it runs up to it,
+ * arriving exactly on the downbeat, so the count is something you see as
+ * well as read. Where there is music before the first note on the same line,
+ * it runs up through that music at the speed it is about to keep — a bar of
+ * count-in is a bar of travel — which is what makes the arrival feel like a
+ * conductor's upbeat rather than a jump. Where there is not, because the
+ * piece starts here or the bar before is on the line above, it comes in from
+ * the left edge instead, still arriving on the beat.
+ */
+function playheadSpot(times: TimeMap, reading: ClockReading): PlayheadSpot | null {
+  const target = playheadAt(times, reading.quarters);
+  if (!target || !reading.countingIn || reading.countInQuarters <= 0) return target;
+
+  const runUpFrom = reading.quarters - reading.countInQuarters;
+  const at = runUpFrom + reading.countInQuarters * reading.countInProgress;
+  const firstBar = times[0]?.startQuarters ?? 0;
+  if (runUpFrom >= firstBar) {
+    const walked = playheadAt(times, at);
+    // Only along this line: the bar before may be on the line above, and a
+    // line that runs up there and jumps back down reads as a mistake.
+    if (walked && walked.top === target.top) return walked;
+  }
+  const from = SIDE_MARGIN;
+  return {
+    x: from + (target.x - from) * reading.countInProgress,
+    top: target.top,
+    bottom: target.bottom,
+  };
+}
+
 function placePlayhead(
   host: HTMLDivElement,
   times: TimeMap,
@@ -409,7 +449,7 @@ function placePlayhead(
   const svg = host.querySelector('svg');
   if (!svg) return;
   const existing = svg.querySelector('.midi-sheet__playhead');
-  const spot = reading ? playheadAt(times, reading.quarters) : null;
+  const spot = reading ? playheadSpot(times, reading) : null;
   if (!spot) {
     existing?.remove();
     return;
@@ -421,8 +461,8 @@ function placePlayhead(
   line.setAttribute('height', String(Math.max(1, spot.bottom - spot.top)));
   line.setAttribute('rx', String(PLAYHEAD_WIDTH / 2));
   line.setAttribute('fill', PLAYHEAD);
-  // Counting in, it waits at the note it is about to set off from, blinking
-  // with the beat so it is clear nothing has gone wrong.
+  // Counting in, it is still on its way in: drawn a little lighter, so it
+  // is clear the music has not started yet.
   line.setAttribute(
     'class',
     reading?.countingIn ? 'midi-sheet__playhead midi-sheet__playhead--count' : 'midi-sheet__playhead',

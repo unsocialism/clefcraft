@@ -6,10 +6,12 @@
  * but not enough to follow along with your eyes — a cursor that jumps from
  * note to note tells you where the music is, never where it is going.
  *
- * So the clock is read here as three things instead of one: the musical
+ * So the clock is read here as several things instead of one: the musical
  * position (for the sweeping line on the page), which beat of the bar is
  * sounding (for the pulse), and whether the count-in bar is still ticking by
- * before the music moves at all.
+ * before the music moves — and how far through that count-in it is, so the
+ * line can run up to the first note and arrive on the beat rather than
+ * standing there waiting for it.
  *
  * It is a pure reading of elapsed time, with no clock of its own, so it can
  * be tested without waiting for real seconds to pass.
@@ -24,6 +26,14 @@ export interface ClockReading {
   readonly beat: number;
   /** 0 at the start of the beat, approaching 1 at its end. */
   readonly beatPhase: number;
+  /**
+   * How far through the count-in: 0 as it begins, 1 at the downbeat. Stays
+   * at 1 once the music is running, so anything reading it as "how much of
+   * the way in are we" needs no special case.
+   */
+  readonly countInProgress: number;
+  /** The length of the count-in in quarter notes; 0 when there is none. */
+  readonly countInQuarters: number;
 }
 
 export interface ClockOptions {
@@ -67,11 +77,14 @@ export function readClock({
     const counted = Math.max(1, Math.round(countInQuarters / beat));
     const index = Math.min(Math.floor(through + SLACK), counted - 1);
     return {
-      // The music has not started: the line waits where it will set off.
+      // The music has not started; `quarters` is where it will set off from,
+      // and countInProgress says how much of the way there we are.
       quarters: startQuarters,
       countingIn: true,
       beat: index + 1,
       beatPhase: Math.max(0, through - Math.floor(through + SLACK)),
+      countInProgress: Math.min(1, Math.max(0, elapsed / countInQuarters)),
+      countInQuarters,
     };
   }
 
@@ -85,6 +98,8 @@ export function readClock({
     // barlines are drawn from too.
     beat: (((whole % beats) + beats) % beats) + 1,
     beatPhase: Math.max(0, through - whole),
+    countInProgress: 1,
+    countInQuarters: Math.max(0, countInQuarters),
   };
 }
 
@@ -94,4 +109,6 @@ export const CLOCK_IDLE: ClockReading = {
   countingIn: false,
   beat: 0,
   beatPhase: 0,
+  countInProgress: 1,
+  countInQuarters: 0,
 };

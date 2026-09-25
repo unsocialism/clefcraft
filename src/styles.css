@@ -1450,21 +1450,17 @@ body {
   100% { opacity: 0.4; transform: scale(1); }
 }
 
-/* The sweeping line on the engraved sheet. Drawn by MidiSheet; styled here
-   so the count-in blink and reduced motion are in one place. */
+/* The sweeping line on the engraved sheet, drawn by MidiSheet. While it is
+   running up to the first note through the count-in it is lighter: on its
+   way, not yet playing. It used to blink here instead, which was right when
+   it stood still and wrong now that it moves. */
 .midi-sheet__playhead--count {
-  animation: playhead-wait 900ms ease-in-out infinite alternate;
-}
-
-@keyframes playhead-wait {
-  0% { opacity: 0.35; }
-  100% { opacity: 1; }
+  opacity: 0.6;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .beat__dot--on,
-  .count-in__number,
-  .midi-sheet__playhead--count {
+  .count-in__number {
     animation: none;
   }
 

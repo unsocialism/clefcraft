@@ -1,7 +1,7 @@
 {
   "name": "clefcraft",
   "private": true,
-  "version": "0.8.0",
+  "version": "0.9.0",
   "type": "module",
   "description": "Reads electronic piano input over MIDI and displays it as notes on a keyboard graphic and a grand staff.",
   "scripts": {

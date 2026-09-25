@@ -28,7 +28,14 @@ describe('the beat, from the time signature', () => {
 
 describe('reading the play-along clock', () => {
   it('holds the music still through the count-in, counting the beats', () => {
-    assert.deepEqual(in44(0), { quarters: 0, countingIn: true, beat: 1, beatPhase: 0 });
+    assert.deepEqual(in44(0), {
+      quarters: 0,
+      countingIn: true,
+      beat: 1,
+      beatPhase: 0,
+      countInProgress: 0,
+      countInQuarters: 4,
+    });
     assert.equal(in44(1.5).beat, 2);
     assert.equal(in44(1.5).beatPhase, 0.5);
     assert.equal(in44(3.99).beat, 4);
@@ -68,6 +75,18 @@ describe('reading the play-along clock', () => {
     assert.equal(in68(3 + 3).beat, 1, 'and round again at the barline');
   });
 
+  it('says how far through the count-in it is, for the line to run up on', () => {
+    // The line has to arrive at the first note exactly on the downbeat, so
+    // it needs the fraction, not only which beat is being counted.
+    assert.equal(in44(0).countInProgress, 0);
+    assert.equal(in44(1).countInProgress, 0.25);
+    assert.equal(in44(3).countInProgress, 0.75);
+    assert.ok(in44(3.999).countInProgress > 0.99);
+    assert.equal(in44(4).countInProgress, 1, 'and it is home when the music starts');
+    assert.equal(in44(9).countInProgress, 1, 'and stays there');
+    assert.equal(in44(2).countInQuarters, 4, 'with the length to run up over');
+  });
+
   it('skips the count-in when there is none', () => {
     const reading = readClock({
       elapsedQuarters: 0,
@@ -79,6 +98,8 @@ describe('reading the play-along clock', () => {
     assert.equal(reading.countingIn, false);
     assert.equal(reading.quarters, 8);
     assert.equal(reading.beat, 1);
+    assert.equal(reading.countInProgress, 1, 'nothing to run up over');
+    assert.equal(reading.countInQuarters, 0);
   });
 
   it('does not go backwards before the clock starts', () => {

@@ -281,7 +281,15 @@ make it followable:
 - **A count-in.** One bar of the piece's own meter before the music moves,
   counted in big figures over the page, so you come in with it rather than
   chasing it from a standing start. It is given every time you press Play,
-  including after a pause, but not when you only move the tempo slider.
+  including after a pause, but not when you only move the tempo slider. The
+  sweeping line does not wait through it: it runs up to the first note and
+  arrives exactly on the downbeat, so the count is something you see as well
+  as read. Where there is music to the left of the cursor on the same line it
+  runs up through that music at the speed it is about to keep — a bar of
+  count-in is a bar of travel, like a conductor's upbeat. Where there is not,
+  because the piece starts there or the bar before is on the line above, it
+  comes in from the left edge of the line instead; running up there and
+  jumping back down would read as a mistake.
 - **A sweeping line.** On a MIDI score, a violet line glides across the
   staves in time with the clock, showing you the beat coming instead of
   leaving you to infer it from the note that has just gone past. It follows
@@ -466,7 +474,7 @@ would need a native CoreMIDI bridge behind the same interface.
 
 ## What has and has not been tested
 
-**Verified:** 388 unit tests — among them pitch spelling across all 15 keys
+**Verified:** 389 unit tests — among them pitch spelling across all 15 keys
 and all 88 notes, MIDI parsing, the sustain pedal, the practice state
 machine and its chord window, PDF reading against real Sibelius and
 MuseScore exports, corrections, the device library, the training
@@ -479,7 +487,9 @@ correcting, the library across reloads, offline use through the service
 worker, playing training exercises through (including a simulated MIDI
 piano for the chord timing), the play-along count-in, sweeping line and
 beat pulse (counted in at the right note, sweeping between the right ones,
-no second count-in when the tempo slider moves), and the hide-the-controls
+no second count-in when the tempo slider moves, and the line running up to
+the downbeat from the left edge at the top of a piece and through the bar
+before when resuming mid-line), and the hide-the-controls
 gestures at phone size, and recording free play end to end — played in,
 written out, saved, reopened from the library and read back as a score, and
 the live view — the trail marching, the roll animating only while something
