@@ -46,6 +46,9 @@ const NOW_BG_RIGHT = 'rgba(47, 109, 246, 0.13)';
 const NOW_BG_LEFT = 'rgba(240, 140, 0, 0.16)';
 const NOW_BG_BOTH = 'rgba(92, 104, 128, 0.13)';
 const PLAYHEAD = 'rgba(124, 58, 237, 0.6)';
+/** The section set to repeat, tinted behind the music. */
+const LOOP_TINT = 'rgba(47, 109, 246, 0.07)';
+const LOOP_EDGE = 'rgba(47, 109, 246, 0.45)';
 const PLAYHEAD_WIDTH = 3;
 /** Room above the treble staff and below the bass staff for the line. */
 const PLAYHEAD_OVERHANG = 14;
@@ -63,6 +66,8 @@ export interface MidiSheetProps {
    */
   readonly clock?: { readonly current: ClockReading } | null;
   readonly playing?: boolean;
+  /** Bars being repeated, marked on the page so the section is visible. */
+  readonly loop?: { readonly fromMeasure: number; readonly toMeasure: number } | null;
 }
 
 function keysOf(entry: EngravedEntry, clef: 'treble' | 'bass'): string[] {
@@ -192,10 +197,12 @@ function draw(host: HTMLDivElement, shownWidth: number, midiScore: MidiScore): E
   /** Each bar as it was drawn, before the bars are joined up into a map. */
   const laidOut: {
     line: number;
+    measure: number;
     startQuarters: number;
     endQuarters: number;
     top: number;
     bottom: number;
+    leftX: number;
     barlineX: number;
     points: Anchor[];
   }[] = [];
@@ -305,6 +312,8 @@ function draw(host: HTMLDivElement, shownWidth: number, midiScore: MidiScore): E
       const barLength = (bar.measure.beats * 4) / bar.measure.beatType;
       laidOut.push({
         line,
+        measure: bar.measure.number,
+        leftX: x,
         startQuarters: barStart,
         endQuarters: barStart + barLength,
         top: treble.getYForLine(0) - PLAYHEAD_OVERHANG,
@@ -357,10 +366,13 @@ function draw(host: HTMLDivElement, shownWidth: number, midiScore: MidiScore): E
     const next = laidOut[index + 1];
     const handover = next && next.line === bar.line ? firstNoteX(next.points) : null;
     return {
+      measure: bar.measure,
       startQuarters: bar.startQuarters,
       endQuarters: bar.endQuarters,
       top: bar.top,
       bottom: bar.bottom,
+      leftX: bar.leftX,
+      rightX: bar.barlineX,
       anchors: anchorsFrom(bar.points, {
         quarters: bar.endQuarters,
         x: handover ?? bar.barlineX,
@@ -408,6 +420,57 @@ function placeBand(host: HTMLDivElement, spot: Spot | undefined): void {
  * than drawing anything: it runs every frame, and re-rendering for it would
  * be sixty renders a second of a piece that has not changed.
  */
+/**
+ * Mark the bars being repeated.
+ *
+ * One rectangle per bar rather than one per section: a section can run over
+ * a line break, and bars that sit next to each other touch, so the tint
+ * reads as one stretch of music either way. The ends are drawn in, so it is
+ * clear where a pass begins and ends rather than merely which bars are in
+ * it.
+ */
+function placeLoopBand(
+  host: HTMLDivElement,
+  times: TimeMap,
+  loop: { fromMeasure: number; toMeasure: number } | null | undefined,
+): void {
+  const svg = host.querySelector('svg');
+  if (!svg) return;
+  for (const old of svg.querySelectorAll('.midi-sheet__loop')) old.remove();
+  if (!loop) return;
+
+  const low = Math.min(loop.fromMeasure, loop.toMeasure);
+  const high = Math.max(loop.fromMeasure, loop.toMeasure);
+  const inside = times.filter((bar) => bar.measure >= low && bar.measure <= high);
+  if (inside.length === 0) return;
+
+  const ns = 'http://www.w3.org/2000/svg';
+  const first = svg.firstChild;
+  for (const bar of inside) {
+    const tint = document.createElementNS(ns, 'rect');
+    tint.setAttribute('x', String(bar.leftX));
+    tint.setAttribute('y', String(bar.top));
+    tint.setAttribute('width', String(Math.max(1, bar.rightX - bar.leftX)));
+    tint.setAttribute('height', String(Math.max(1, bar.bottom - bar.top)));
+    tint.setAttribute('fill', LOOP_TINT);
+    tint.setAttribute('class', 'midi-sheet__loop');
+    svg.insertBefore(tint, first);
+  }
+  for (const [edge, bar] of [
+    [inside[0]!.leftX, inside[0]!],
+    [inside[inside.length - 1]!.rightX, inside[inside.length - 1]!],
+  ] as const) {
+    const mark = document.createElementNS(ns, 'rect');
+    mark.setAttribute('x', String(edge - 1));
+    mark.setAttribute('y', String(bar.top));
+    mark.setAttribute('width', '2');
+    mark.setAttribute('height', String(Math.max(1, bar.bottom - bar.top)));
+    mark.setAttribute('fill', LOOP_EDGE);
+    mark.setAttribute('class', 'midi-sheet__loop');
+    svg.insertBefore(mark, first);
+  }
+}
+
 /**
  * Where the line stands, counting in included.
  *
@@ -486,6 +549,7 @@ export function MidiSheet({
   follow = false,
   clock = null,
   playing = false,
+  loop = null,
 }: MidiSheetProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const spotsRef = useRef<Map<number, Spot>>(new Map());
@@ -523,6 +587,12 @@ export function MidiSheet({
       setError(cause instanceof Error ? cause.message : String(cause));
     }
   }, [midiScore, width]);
+
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host) return;
+    placeLoopBand(host, timesRef.current, loop);
+  }, [loop, width, midiScore, error]);
 
   useEffect(() => {
     const host = hostRef.current;

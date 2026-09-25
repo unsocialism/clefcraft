@@ -4,6 +4,8 @@ import assert from 'node:assert/strict';
 import {
   DEFAULT_PRACTICE_OPTIONS,
   advanceToTime,
+  measureRange,
+  stepUpTempo,
   attemptExpiresIn,
   expireAttempt,
   currentEvent,
@@ -492,5 +494,103 @@ describe('the press log', () => {
     state = pressNote(triad, state, 61, WINDOWED, 1000);
     assert.equal(state.recent.length, 1);
     assert.deepEqual(startPractice(triad).recent, []);
+  });
+});
+
+describe('a section of the piece, by bar numbers', () => {
+  // Four bars of four quarters: bar 1 is events 0-3, bar 2 is 4-7, and so on.
+  const PIECE = buildScore(
+    Array.from({ length: 16 }, (_, i) => ({ notes: [60 + (i % 8)] })),
+  );
+
+  it('gives the events between two bars, both ends included', () => {
+    const range = measureRange(PIECE, 2, 3)!;
+    assert.equal(range.firstIndex, 4);
+    assert.equal(range.lastIndex, 11);
+    assert.equal(range.startQuarters, 4);
+    assert.equal(range.endQuarters, 12, 'a pass is over at the end of the last note');
+    assert.equal(range.noteCount, 8, 'and this many notes make a pass played rather than sat through');
+  });
+
+  it('counts the notes, not the moments', () => {
+    const chords = buildScore([
+      { notes: [60, 64, 67] },
+      { notes: [62] },
+      { notes: [{ midi: 48, staff: 2 }, 65, 69] },
+    ]);
+    assert.equal(measureRange(chords, 1, 1)!.noteCount, 7);
+  });
+
+  it('takes the bars the other way round as the same section', () => {
+    assert.deepEqual(measureRange(PIECE, 3, 2), measureRange(PIECE, 2, 3));
+  });
+
+  it('holds the numbers to the piece', () => {
+    const range = measureRange(PIECE, 0, 99)!;
+    assert.equal(range.fromMeasure, 1);
+    assert.equal(range.toMeasure, 4);
+    assert.equal(range.firstIndex, 0);
+    assert.equal(range.lastIndex, 15);
+  });
+
+  it('is one bar wide when both numbers are the same', () => {
+    const range = measureRange(PIECE, 3, 3)!;
+    assert.equal(range.firstIndex, 8);
+    assert.equal(range.lastIndex, 11);
+  });
+
+  it('has nothing to say about an empty score or a silent stretch', () => {
+    assert.equal(measureRange(buildScore([]), 1, 2), null);
+    const gap = buildScore([
+      { notes: [60], measure: 1 },
+      { notes: [62], measure: 4 },
+    ]);
+    assert.equal(measureRange(gap, 2, 3), null, 'bars 2 and 3 hold nothing to play');
+  });
+});
+
+describe('notes played correctly, counted', () => {
+  it('counts each right note once, in either mode', () => {
+    let state = startPractice(TWO_HAND_DEMO);
+    assert.equal(state.correctNotes, 0);
+    state = pressNote(TWO_HAND_DEMO, state, 36, DEFAULT_PRACTICE_OPTIONS, 0);
+    state = pressNote(TWO_HAND_DEMO, state, 60, DEFAULT_PRACTICE_OPTIONS, 10);
+    assert.equal(state.correctNotes, 2);
+    state = pressNote(TWO_HAND_DEMO, state, 60, DEFAULT_PRACTICE_OPTIONS, 20);
+    assert.equal(state.correctNotes, 2, 'striking the same key again is not another note');
+  });
+
+  it('does not count a wrong note', () => {
+    let state = startPractice(C_MAJOR_SCALE);
+    state = pressNote(C_MAJOR_SCALE, state, 61, DEFAULT_PRACTICE_OPTIONS, 0);
+    assert.equal(state.correctNotes, 0);
+    assert.equal(state.totalMistakes, 1);
+  });
+
+  it('counts in play-along, where nothing is ever completed', () => {
+    let state = startPractice(C_MAJOR_SCALE);
+    state = pressNote(C_MAJOR_SCALE, state, 60, TEMPO, 0);
+    assert.equal(state.correctNotes, 1);
+    assert.equal(state.cleanEvents, 0, 'the clock owns the cursor, so nothing is banked');
+  });
+
+  it('starts again from nothing when the cursor is moved', () => {
+    let state = startPractice(C_MAJOR_SCALE);
+    state = pressNote(C_MAJOR_SCALE, state, 60, DEFAULT_PRACTICE_OPTIONS, 0);
+    assert.equal(state.correctNotes, 1);
+    assert.equal(seekToMeasure(C_MAJOR_SCALE, 1).correctNotes, 0);
+  });
+});
+
+describe('building a passage up to speed', () => {
+  it('adds a few beats at a time', () => {
+    assert.equal(stepUpTempo(60, 100), 65);
+    assert.equal(stepUpTempo(65, 100), 70);
+  });
+
+  it('stops at the limit rather than going past it', () => {
+    assert.equal(stepUpTempo(98, 100), 100);
+    assert.equal(stepUpTempo(100, 100), 100);
+    assert.equal(stepUpTempo(120, 100), 120, 'already faster than asked: leave it alone');
   });
 });

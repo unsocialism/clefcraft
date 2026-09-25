@@ -722,6 +722,10 @@ export function App() {
                   progress={practice.progress}
                   meter={practice.meter}
                   clock={practice.clock}
+                  loop={practice.loop}
+                  loopEmpty={practice.loop !== null && practice.loopRange === null}
+                  loopProgress={practice.loopProgress}
+                  onLoopChange={practice.setLoop}
                   onModeChange={practice.setMode}
                   onRequireCleanChange={practice.setRequireClean}
                   onChordWindowChange={practice.setChordWindowMs}
@@ -953,6 +957,7 @@ export function App() {
                 follow
                 clock={practice.clock}
                 playing={playingAlong}
+                loop={practice.loopRange}
               />
             )}
 

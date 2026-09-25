@@ -53,6 +53,13 @@ export interface PracticeState {
   readonly totalMistakes: number;
   /** Events completed without a wrong note anywhere in them. */
   readonly cleanEvents: number;
+  /**
+   * Notes struck that the music asked for, counting each one once. Unlike
+   * `cleanEvents` it grows in play-along too, where the clock owns the
+   * cursor and nothing is ever "completed" — which is what makes it the
+   * measure of whether a pass was actually played rather than sat through.
+   */
+  readonly correctNotes: number;
   readonly finished: boolean;
   /** When the current chord attempt began, for the timing window. */
   readonly chordStartedAt: number | null;
@@ -108,6 +115,7 @@ export function startPractice(score: Score): PracticeState {
     wrongHere: 0,
     totalMistakes: 0,
     cleanEvents: 0,
+    correctNotes: 0,
     finished: index === -1,
     chordStartedAt: null,
     recent: [],
@@ -196,6 +204,7 @@ export function pressNote(
   const next: PracticeState = {
     ...state,
     struck,
+    correctNotes: state.correctNotes + 1,
     chordStartedAt: firstOfAttempt || !inTime ? now : startedAt,
     recent: remember(state, midi, inTime ? 'correct' : 'restarted', now),
   };
@@ -293,10 +302,82 @@ export function seekToIndex(score: Score, index: number): PracticeState {
     wrongHere: 0,
     totalMistakes: 0,
     cleanEvents: 0,
+    correctNotes: 0,
     finished: target === -1,
     chordStartedAt: null,
     recent: [],
   };
+}
+
+/** A stretch of the piece, as bar numbers turn into events and time. */
+export interface MeasureRange {
+  /** Bar numbers as printed, after clamping and putting them in order. */
+  readonly fromMeasure: number;
+  readonly toMeasure: number;
+  readonly firstIndex: number;
+  readonly lastIndex: number;
+  readonly startQuarters: number;
+  /** The end of the last event in the range: where a pass is over. */
+  readonly endQuarters: number;
+  /** Notes in the range, so a pass can be told from a pass sat through. */
+  readonly noteCount: number;
+}
+
+/**
+ * The events between two bar numbers, inclusive of both.
+ *
+ * Bars rather than events because bars are what you read off the page and
+ * what the section you are working on is made of. Numbers the wrong way
+ * round are taken as meant — bars 12 to 9 is the same section — and numbers
+ * off the end are clamped, so a range is never empty by typing.
+ *
+ * Null when nothing at all falls in it: a score can have bars with no notes
+ * in them, and there is nothing to loop there.
+ */
+export function measureRange(score: Score, from: number, to: number): MeasureRange | null {
+  if (score.events.length === 0) return null;
+  const last = Math.max(1, score.measureCount);
+  const low = Math.min(Math.max(1, Math.min(from, to)), last);
+  const high = Math.min(Math.max(1, Math.max(from, to)), last);
+
+  let firstIndex = -1;
+  let lastIndex = -1;
+  for (const [index, event] of score.events.entries()) {
+    if (event.measure < low || event.measure > high) continue;
+    if (firstIndex === -1) firstIndex = index;
+    lastIndex = index;
+  }
+  if (firstIndex === -1) return null;
+
+  const first = score.events[firstIndex]!;
+  const final = score.events[lastIndex]!;
+  let noteCount = 0;
+  for (let i = firstIndex; i <= lastIndex; i++) {
+    noteCount += score.events[i]?.notes.length ?? 0;
+  }
+  return {
+    fromMeasure: low,
+    toMeasure: high,
+    firstIndex,
+    lastIndex,
+    startQuarters: first.onsetQuarters,
+    endQuarters: final.onsetQuarters + final.durationQuarters,
+    noteCount,
+  };
+}
+
+/** How much a clean pass of a looped section is allowed to speed things up. */
+const TEMPO_STEP_BPM = 5;
+
+/**
+ * The tempo for the next pass after a clean one.
+ *
+ * A few beats at a time and never past the limit: the point of building a
+ * passage up is that each pass is only a little harder than the last.
+ */
+export function stepUpTempo(bpm: number, limit: number): number {
+  if (bpm >= limit) return bpm;
+  return Math.min(limit, bpm + TEMPO_STEP_BPM);
 }
 
 export function seekToMeasure(score: Score, measure: number): PracticeState {

@@ -20,8 +20,13 @@ export interface Anchor {
 }
 
 export interface MappedBar {
+  /** The bar number as printed, for marking a section by its numbers. */
+  readonly measure: number;
   readonly startQuarters: number;
   readonly endQuarters: number;
+  /** The bar's own edges on the page, for drawing something behind it. */
+  readonly leftX: number;
+  readonly rightX: number;
   /** Top of the treble staff and bottom of the bass staff on this line. */
   readonly top: number;
   readonly bottom: number;

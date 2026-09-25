@@ -1253,6 +1253,13 @@ body {
 
 .app__top-slot > .app__top {
   min-height: 0;
+  /* The shell gives the music and the keyboard their room first, so on a
+     short screen the controls are the ones squeezed — and a squeezed
+     control is a control you cannot reach. Scrolling inside the strip
+     keeps every row reachable without taking room from the music. */
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  scrollbar-width: thin;
   transition:
     padding 220ms ease,
     border-color 220ms ease;
@@ -1571,4 +1578,22 @@ body {
   .staff__canvas--slide {
     animation: none;
   }
+}
+
+/* ---------- repeating a section ---------- */
+
+.practice-controls__row--loop {
+  gap: 10px 14px;
+}
+
+/* A label and its field side by side, for the bar numbers: "Bars 9 to 16"
+   reads as a sentence and takes one line rather than three. */
+.toolbar__field--inline {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+}
+
+.toolbar__field--inline input[type='number'] {
+  width: 4.5rem;
 }

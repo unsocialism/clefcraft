@@ -15,12 +15,15 @@ import {
   attemptExpiresIn,
   expireAttempt,
   currentEvent,
+  measureRange,
   pressNote,
   scoreLengthQuarters,
   seekToMeasure,
   seekToIndex,
   startPractice,
+  stepUpTempo,
   upcoming,
+  type MeasureRange,
   type PracticeMode,
   type PracticeState,
 } from '../core/score/practiceEngine.ts';
@@ -45,6 +48,11 @@ export interface PracticeSession {
   readonly running: boolean;
   /** Beats in a bar and what a beat is worth, for the count-in and the pulse. */
   readonly meter: Meter;
+  /** The section being repeated, or null when the whole piece is in play. */
+  readonly loop: LoopSettings | null;
+  /** The loop as events and time, or null when nothing falls in it. */
+  readonly loopRange: MeasureRange | null;
+  readonly loopProgress: LoopProgress;
   /**
    * The play-along clock, updated every frame while it runs. A ref rather
    * than state on purpose: a line that sweeps across the page has to move
@@ -78,6 +86,11 @@ export interface PracticeSession {
   setIgnoreDuplicatesMs(ms: number | null): void;
   setTempoBpm(bpm: number): void;
   setMeter(meter: Meter): void;
+  /**
+   * Set or clear the section to repeat. Setting one moves the cursor to its
+   * first note and starts the count of passes again.
+   */
+  setLoop(loop: LoopSettings | null): void;
   start(): void;
   pause(): void;
   restart(): void;
@@ -88,6 +101,29 @@ export interface PracticeSession {
 }
 
 const LOOKAHEAD = 3;
+
+/**
+ * A section set to repeat, and how to repeat it.
+ *
+ * Bar numbers rather than events, because a section is something you read
+ * off the page: "bars nine to sixteen" is how you would say it to a teacher,
+ * and it means the same whichever file the music came from.
+ */
+export interface LoopSettings {
+  readonly fromMeasure: number;
+  readonly toMeasure: number;
+  /** Play along: count a bar in at the top of every pass. */
+  readonly countIn: boolean;
+  /** Play along: raise the tempo a little after a pass with no mistakes. */
+  readonly speedUp: boolean;
+}
+
+/** How the looping is going, since the section was set. */
+export interface LoopProgress {
+  readonly passes: number;
+  /** Passes played from end to end without a wrong note. */
+  readonly clean: number;
+}
 
 export interface Meter {
   readonly beats: number;
@@ -104,6 +140,18 @@ export const DEFAULT_METER: Meter = { beats: 4, beatType: 4 };
  */
 export const DEFAULT_CHORD_WINDOW_MS = 120;
 
+/** Nothing has been round yet. */
+const NO_PASSES: LoopProgress = { passes: 0, clean: 0 };
+
+/**
+ * As fast as clean passes will ever push a section: the top of the tempo
+ * slider, so building up never leaves you somewhere the control cannot
+ * reach. Capping it at the piece's own written tempo instead was tried and
+ * makes the setting do nothing at all when you are already there, which
+ * reads as broken rather than as considerate.
+ */
+const FASTEST_BUILD_UP = 200;
+
 export function usePractice(): PracticeSession {
   const [score, setScoreState] = useState<Score>(EMPTY_SCORE);
   const [state, setState] = useState<PracticeState>(() => startPractice(EMPTY_SCORE));
@@ -113,6 +161,8 @@ export function usePractice(): PracticeSession {
   const [tempoBpm, setTempoBpm] = useState(80);
   const [running, setRunning] = useState(false);
   const [meter, setMeter] = useState<Meter>(DEFAULT_METER);
+  const [loop, setLoopState] = useState<LoopSettings | null>(null);
+  const [loopProgress, setLoopProgress] = useState<LoopProgress>(NO_PASSES);
   const clock = useRef<ClockReading>(CLOCK_IDLE);
   // Set when Play is pressed, and cleared once the count-in it asks for has
   // been given. Changing the tempo while the piece runs restarts the clock
@@ -135,9 +185,67 @@ export function usePractice(): PracticeSession {
   scoreRef.current = score;
   const optionsRef = useRef(DEFAULT_PRACTICE_OPTIONS);
   optionsRef.current = { mode, requireClean, chordWindowMs };
+  const stateRef = useRef(state);
+  stateRef.current = state;
+
+  // The looped section as events and time. Recomputed when the section or
+  // the score changes, and read through a ref by the clock, which owns the
+  // cursor while it runs and must not be restarted for it.
+  const loopRange = useMemo(
+    () => (loop ? measureRange(score, loop.fromMeasure, loop.toMeasure) : null),
+    [loop, score],
+  );
+  const loopRef = useRef(loop);
+  loopRef.current = loop;
+  const rangeRef = useRef(loopRange);
+  rangeRef.current = loopRange;
+
+  const setLoop = useCallback((next: LoopSettings | null) => {
+    setLoopState(next);
+    setLoopProgress(NO_PASSES);
+    if (!next) return;
+    const range = measureRange(scoreRef.current, next.fromMeasure, next.toMeasure);
+    if (range) setState(seekToIndex(scoreRef.current, range.firstIndex));
+  }, []);
+
+  /**
+   * A pass is over: count it, reward a clean one, and go back to the top.
+   *
+   * Called from the clock in tempo mode and from the watcher below in wait
+   * mode, so the two modes count the same thing in the same way.
+   */
+  const turnAround = useCallback(() => {
+    const range = rangeRef.current;
+    const settings = loopRef.current;
+    if (!range) return;
+    // Seeking resets the engine's counters, and every pass begins with a
+    // seek, so what they hold is this pass and nothing earlier. A pass is
+    // clean when it was played — all of its notes — and none of them wrong;
+    // without the second half, a section left running while you make tea
+    // would count clean passes and, worse, speed itself up.
+    const here = stateRef.current;
+    const clean = here.totalMistakes === 0 && here.correctNotes >= range.noteCount;
+    setLoopProgress((previous) => ({
+      passes: previous.passes + 1,
+      clean: previous.clean + (clean ? 1 : 0),
+    }));
+    if (clean && settings?.speedUp) {
+      // The tempo change restarts the clock below, which reads this rather
+      // than the local run of the pass — so the count-in has to be asked
+      // for again here or the new pass would begin without one.
+      countInRef.current = settings.countIn;
+      setTempoBpm((bpm) => stepUpTempo(bpm, FASTEST_BUILD_UP));
+    }
+    setState(seekToIndex(scoreRef.current, range.firstIndex));
+  }, []);
 
   const setScore = useCallback((next: Score, options?: { keepPosition?: boolean }) => {
     setScoreState(next);
+    if (!options?.keepPosition) {
+      // A section of one piece means nothing in the next one.
+      setLoopState(null);
+      setLoopProgress(NO_PASSES);
+    }
     if (options?.keepPosition) {
       setState((previous) =>
         seekToIndex(next, Math.min(previous.index, Math.max(0, next.events.length - 1))),
@@ -216,6 +324,13 @@ export function usePractice(): PracticeSession {
   }, []);
 
   const start = useCallback(() => {
+    // Starting outside the section you are working on would play up to it
+    // and only then begin looping, which is not what the section is for.
+    const range = rangeRef.current;
+    const here = stateRef.current;
+    if (range && (here.finished || here.index < range.firstIndex || here.index > range.lastIndex)) {
+      setState(seekToIndex(scoreRef.current, range.firstIndex));
+    }
     countInRef.current = true;
     setRunning(true);
   }, []);
@@ -232,15 +347,16 @@ export function usePractice(): PracticeSession {
 
     const quartersPerMs = tempoBpm / 60 / 1000;
     const startEvent = currentEvent(score, state);
-    const startQuarters = startEvent?.onsetQuarters ?? 0;
+    const oneBar = countInQuartersFor(meter.beats, meter.beatType);
     const beatQuarters = beatQuartersFor(meter.beatType);
+    // Where this pass sets off from, and when. Both move when a looped
+    // section comes round again, which is why they are not constants.
+    let startQuarters = startEvent?.onsetQuarters ?? 0;
     // A bar of beats before the music moves, so you can come in with it
     // rather than chase it from a standing start.
-    const countInQuarters = countInRef.current
-      ? countInQuartersFor(meter.beats, meter.beatType)
-      : 0;
+    let countInQuarters = countInRef.current ? oneBar : 0;
     countInRef.current = false;
-    const startedAt = performance.now();
+    let startedAt = performance.now();
     let frame = 0;
     // Set before the first frame, so nothing reads the clock as idle in the
     // moment between Play and the frame that follows it.
@@ -263,6 +379,18 @@ export function usePractice(): PracticeSession {
       });
       clock.current = reading;
       if (!reading.countingIn) {
+        const range = rangeRef.current;
+        if (range && reading.quarters >= range.endQuarters - 1e-9) {
+          // The end of the section: round again from the top, counted in or
+          // not as asked. Done here rather than by restarting the effect, so
+          // the turn happens on the beat it is due rather than a render later.
+          turnAround();
+          startQuarters = range.startQuarters;
+          countInQuarters = loopRef.current?.countIn ? oneBar : 0;
+          startedAt = performance.now();
+          frame = requestAnimationFrame(tick);
+          return;
+        }
         setState((previous) => advanceToTime(scoreRef.current, previous, reading.quarters));
         if (reading.quarters >= scoreLengthQuarters(scoreRef.current)) {
           clock.current = CLOCK_IDLE;
@@ -280,7 +408,14 @@ export function usePractice(): PracticeSession {
     // `state` is intentionally not a dependency: the clock reads its start
     // point once and then owns the cursor until paused.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [running, mode, tempoBpm, score, meter]);
+  }, [running, mode, tempoBpm, score, meter, turnAround]);
+
+  // Wait mode has no clock to notice the end of a section, so the cursor is
+  // watched instead: playing past the last note of the loop turns it round.
+  useEffect(() => {
+    if (mode !== 'wait' || !loopRange) return;
+    if (state.finished || state.index > loopRange.lastIndex) turnAround();
+  }, [mode, loopRange, state.index, state.finished, turnAround]);
 
   // Abandon a half-played chord once its window closes. Without this the
   // partial attempt never expires on its own: the keys already pressed stay
@@ -309,6 +444,9 @@ export function usePractice(): PracticeSession {
     tempoBpm,
     running,
     meter,
+    loop,
+    loopRange,
+    loopProgress,
     clock,
     ahead,
     progress,
@@ -322,6 +460,7 @@ export function usePractice(): PracticeSession {
     setIgnoreDuplicatesMs,
     setTempoBpm,
     setMeter,
+    setLoop,
     start,
     pause,
     restart,

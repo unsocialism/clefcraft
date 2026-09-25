@@ -6,10 +6,13 @@ import { anchorsFrom, playheadAt, type TimeMap } from './playhead.ts';
 /** Two bars of 4/4, the second one on the line below. */
 const MAP: TimeMap = [
   {
+    measure: 1,
     startQuarters: 0,
     endQuarters: 4,
     top: 10,
     bottom: 150,
+    leftX: 90,
+    rightX: 410,
     anchors: [
       { quarters: 0, x: 100 },
       { quarters: 2, x: 200 },
@@ -17,10 +20,13 @@ const MAP: TimeMap = [
     ],
   },
   {
+    measure: 2,
     startQuarters: 4,
     endQuarters: 8,
     top: 260,
     bottom: 400,
+    leftX: 40,
+    rightX: 260,
     anchors: [
       { quarters: 4, x: 50 },
       { quarters: 7, x: 150 },
@@ -63,7 +69,21 @@ describe('placing the sweeping line', () => {
   it('has nowhere to be when nothing is engraved', () => {
     assert.equal(playheadAt([], 1), null);
     assert.equal(
-      playheadAt([{ startQuarters: 0, endQuarters: 4, top: 0, bottom: 10, anchors: [] }], 1),
+      playheadAt(
+        [
+          {
+            measure: 1,
+            startQuarters: 0,
+            endQuarters: 4,
+            top: 0,
+            bottom: 10,
+            leftX: 0,
+            rightX: 10,
+            anchors: [],
+          },
+        ],
+        1,
+      ),
       null,
     );
   });

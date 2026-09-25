@@ -312,6 +312,37 @@ times a second.
 
 Both modes count mistakes and clean events, and you can jump to any measure.
 
+## Repeating a section
+
+*Repeat a section* turns the piece into the few bars you are actually working
+on: give it two bar numbers and it plays those bars round and round, in either
+mode, without you reaching for the mouse between attempts. Bar numbers rather
+than clicks on the page, because bars are how you would say it to a teacher —
+"nine to sixteen" — and they mean the same whether the music came from a MIDI
+file, a MusicXML file or a PDF. Numbers the wrong way round mean the same
+section, numbers past the end are pulled back to it, and on an engraved MIDI
+score the bars are tinted on the page so the section is visible with the
+controls hidden.
+
+- **Wait for me** turns round when you play past the last note of the section.
+- **Play along** turns round when the clock reaches the end of it, with a
+  count-in bar each time if you want one — the tick is remembered between
+  sessions.
+- **It counts the passes**, and how many of them were clean. A pass is clean
+  when you played every note of the section and none of them wrong. Both halves
+  matter: without the first, a section left running while you make tea would
+  count clean pass after clean pass.
+- **Speed up when clean** (play along) raises the tempo five beats a minute
+  after every clean pass, up to 200. Start a passage slower than you can manage
+  and it builds itself up, which is what a teacher would have you do by hand.
+  It is capped at the top of the tempo slider rather than at the piece's own
+  written tempo: capping it there makes the setting do nothing at all when you
+  are already at that tempo, which reads as broken rather than as considerate.
+
+Moving the cursor — by looping, by the measure box, by Restart — starts the
+engine's counters again, so "clean" and "wrong" under the progress bar are
+this pass rather than the whole session.
+
 ## Browser support
 
 Web MIDI is the only way for a web page to read a MIDI instrument, and support
@@ -437,6 +468,12 @@ is F♯ in D major and G♭ in E♭ major. `spellNote` picks the letter from the
 signature, preferring a natural over an awkward letter — which is why F major
 writes note 71 as B♮ and not C♭.
 
+**The controls strip scrolls when the screen is short.** The shell gives the
+music and the keyboard their room first, so on a phone the control strip is
+the one that gets squeezed — and before it scrolled, its bottom rows were
+simply cut off and unreachable. On a desktop nothing about it changes; there
+is nothing to scroll.
+
 **The note readout is a fixed height.** The names of the notes you are
 playing are twice the size of the "Play a note" hint they replace, so a box
 sized to its contents grew by sixteen pixels the instant a key went down and
@@ -474,7 +511,7 @@ would need a native CoreMIDI bridge behind the same interface.
 
 ## What has and has not been tested
 
-**Verified:** 389 unit tests — among them pitch spelling across all 15 keys
+**Verified:** 401 unit tests — among them pitch spelling across all 15 keys
 and all 88 notes, MIDI parsing, the sustain pedal, the practice state
 machine and its chord window, PDF reading against real Sibelius and
 MuseScore exports, corrections, the device library, the training
@@ -490,7 +527,10 @@ beat pulse (counted in at the right note, sweeping between the right ones,
 no second count-in when the tempo slider moves, and the line running up to
 the downbeat from the left edge at the top of a piece and through the bar
 before when resuming mid-line), and the hide-the-controls
-gestures at phone size, and recording free play end to end — played in,
+gestures at phone size, repeating a section (a pass counted in each mode, a
+pass with a wrong note not counted clean, a pass nobody played not counted
+clean either, the tempo climbing 60-65-70-75 on clean passes played to the
+guides, and the same on a PDF score), and recording free play end to end — played in,
 written out, saved, reopened from the library and read back as a score, and
 the live view — the trail marching, the roll animating only while something
 is moving, each note drawn over its own key to the pixel at both desktop and
