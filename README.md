@@ -135,9 +135,14 @@ so that notes of the length people actually play are worth looking at — half a
 second fills half the strip, a second and a bit fills it — which costs history:
 a little over a second of it is on screen at full height. That is the right way
 round: the strip is for how you are playing now, and the staff above it is what
-remembers. It is drawn on a canvas from the keyboard's own geometry
-(`core/music/keyboard.ts`), inside the keyboard's own strip, so a note sits over
-its key at any width and scrolls sideways with the keys on a phone. When
+remembers. It is drawn on a canvas inside the keyboard's own strip, and takes its
+mapping straight from the keyboard's own transform (`getScreenCTM`), so a note
+sits over its key at any size and scrolls sideways with the keys on a phone.
+Working that mapping out a second time from the width is what put the notes out
+of line on a phone in landscape: the keyboard's SVG fits its drawing to its box,
+so once the box is wider than it is tall enough for, the *height* sets the scale
+— and a copy of the formula that only knew about width drifted by tens of pixels
+towards the ends. When
 nothing is sounding and nothing is still on screen it stops animating and looks
 again a few times a second, so an open tab on a phone is not sixty wasted
 frames a second.

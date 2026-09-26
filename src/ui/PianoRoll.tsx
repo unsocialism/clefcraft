@@ -98,6 +98,19 @@ export function PianoRoll({
       [...layout.whiteKeys, ...layout.blackKeys].map((key) => [key.midi, key] as const),
     );
 
+    /**
+     * The keys themselves, to take the mapping from.
+     *
+     * Working it out a second time here is what put the notes out of line:
+     * the keyboard's SVG fits its drawing to its box with
+     * preserveAspectRatio, which means the *height* decides the scale as
+     * soon as the box is wider than it is tall enough for — a phone in
+     * landscape, a short window — and a copy of the formula that only knew
+     * about width drifted by tens of pixels towards the ends. Asking the
+     * element for its own matrix cannot drift.
+     */
+    const keyboard = canvas.parentElement?.querySelector('svg.keyboard') as SVGSVGElement | null;
+
     let frame = 0;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const draw = (loop: boolean) => {
@@ -113,11 +126,16 @@ export function PianoRoll({
       context.setTransform(ratio, 0, 0, ratio, 0, 0);
       context.clearRect(0, 0, width, height);
 
-      // The same scaling the keyboard's SVG does with
-      // preserveAspectRatio="xMidYMid meet", so a note sits over its key at
-      // every width.
-      const scale = Math.min(width / drawnWidth, 1);
-      const offset = (width - drawnWidth * scale) / 2;
+      // Straight from the keyboard's own transform, so a note sits over its
+      // key at every size. The fallback is the shape of that transform when
+      // there is no keyboard to ask, which in this app there always is.
+      const matrix = keyboard?.getScreenCTM();
+      let scale = Math.min(width / drawnWidth, 1);
+      let offset = (width - drawnWidth * scale) / 2;
+      if (matrix && matrix.a > 0) {
+        scale = matrix.a;
+        offset = matrix.e - canvas.getBoundingClientRect().left;
+      }
       const perMs = PIXELS_PER_SECOND / 1000;
       const now = performance.now();
       let drawing = false;
