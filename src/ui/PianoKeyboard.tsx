@@ -2,11 +2,13 @@ import {
   useEffect,
   useMemo,
   useRef,
+  useState,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from 'react';
 
 import { keyboardLayout, type KeyRect } from '../core/music/keyboard.ts';
+import { followScroll, moreBeyond, type MoreAt, type Span } from './keyboardFollow.ts';
 import { noteName, pitchClassName, spellNote } from '../core/music/pitch.ts';
 import type { AccidentalPreference } from '../core/music/pitch.ts';
 
@@ -89,41 +91,91 @@ export function PianoKeyboard({
 
   const widthPx = layout.width * WHITE_KEY_PX;
 
-  // Keep the keys you have to play now in view. On a screen narrower than
-  // the keyboard — any phone — the strip scrolls sideways, and a guide lit
-  // up off the edge of the screen is no guide at all. Only scrolls when the
-  // keys are actually out of view, so on a wide screen nothing moves.
+  /**
+   * Keep what matters in view.
+   *
+   * Eighty-eight keys at a size worth tapping are wider than a phone, so the
+   * strip scrolls sideways and half the instrument is off screen — on a
+   * phone held upright you see up to about B5 and no further. A guide lit up
+   * off the edge is no guide at all, and neither is a note you just played,
+   * so the strip follows both: the keys under your fingers and the ones a
+   * score or exercise is asking for, kept in one window where they fit.
+   *
+   * It only moves when they are actually out of view, so a wide screen never
+   * moves and a strip you have scrolled by hand stays where you put it for
+   * as long as you are playing inside it.
+   */
   const scrollRef = useRef<HTMLDivElement | null>(null);
-  const nowKeys = useMemo(
-    () =>
-      [...guideByMidi]
-        .filter(([, g]) => g.distance === 0)
-        .map(([midi]) => midi)
-        .sort((a, b) => a - b)
-        .join(','),
-    [guideByMidi],
-  );
+  /**
+   * The keys worth keeping on screen: the ones under your fingers, and the
+   * ones a score or exercise is asking for. Flattened to a string so that
+   * the effect below runs when the keys change rather than on every render.
+   */
+  const followKeys = useMemo(() => {
+    const guided = [...guideByMidi]
+      .filter(([, g]) => g.distance === 0)
+      .map(([midi]) => midi)
+      .sort((a, b) => a - b);
+    const played = [...activeSet].sort((a, b) => a - b);
+    return `${guided.join(',')}|${played.join(',')}`;
+  }, [guideByMidi, activeSet]);
   useEffect(() => {
     const strip = scrollRef.current;
-    if (!strip || !nowKeys) return;
+    if (!strip || followKeys === '|') return;
     const svg = strip.querySelector('svg');
     if (!svg) return;
-    const keys = [...layout.whiteKeys, ...layout.blackKeys].filter((k) =>
-      nowKeys.split(',').includes(String(k.midi)),
-    );
-    if (!keys.length) return;
+    const parts = followKeys.split('|');
+    const all = [...layout.whiteKeys, ...layout.blackKeys];
     const scale = svg.clientWidth / widthPx;
-    const left = Math.min(...keys.map((k) => k.x)) * WHITE_KEY_PX * scale;
-    const right = Math.max(...keys.map((k) => k.x + k.width)) * WHITE_KEY_PX * scale;
-    const margin = 24;
-    if (left >= strip.scrollLeft + margin && right <= strip.scrollLeft + strip.clientWidth - margin) {
-      return;
+    const span = (list: string): Span | undefined => {
+      if (!list) return undefined;
+      const wanted = new Set(list.split(','));
+      const keys = all.filter((k) => wanted.has(String(k.midi)));
+      if (!keys.length) return undefined;
+      return {
+        left: Math.min(...keys.map((k) => k.x)) * WHITE_KEY_PX * scale,
+        right: Math.max(...keys.map((k) => k.x + k.width)) * WHITE_KEY_PX * scale,
+      };
+    };
+    const to = followScroll(
+      { scrollLeft: strip.scrollLeft, width: strip.clientWidth },
+      span(parts[0] ?? ''),
+      span(parts[1] ?? ''),
+    );
+    if (to === undefined) return;
+    strip.scrollTo({ left: to, behavior: 'smooth' });
+  }, [followKeys, layout, widthPx]);
+
+  /**
+   * Which ends of the keyboard carry on past the edge of the screen.
+   *
+   * Without this there is nothing at all to say the strip scrolls: it simply
+   * looks like a keyboard that stops at B5. A fade at whichever end has more
+   * behind it says "there is more this way" without taking any room.
+   */
+  const [moreAt, setMoreAt] = useState<MoreAt>('none');
+  useEffect(() => {
+    const strip = scrollRef.current;
+    if (!strip) return;
+    const update = () => {
+      setMoreAt(moreBeyond(strip.scrollLeft, strip.clientWidth, strip.scrollWidth));
+    };
+    update();
+    strip.addEventListener('scroll', update, { passive: true });
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', update);
+      return () => {
+        strip.removeEventListener('scroll', update);
+        window.removeEventListener('resize', update);
+      };
     }
-    strip.scrollTo({
-      left: (left + right) / 2 - strip.clientWidth / 2,
-      behavior: 'smooth',
-    });
-  }, [nowKeys, layout, widthPx]);
+    const observer = new ResizeObserver(update);
+    observer.observe(strip);
+    return () => {
+      strip.removeEventListener('scroll', update);
+      observer.disconnect();
+    };
+  }, [layout]);
 
   const pointerHandlers = (midi: number) => ({
     onPointerDown: (event: ReactPointerEvent<SVGRectElement>) => {
@@ -206,7 +258,7 @@ export function PianoKeyboard({
   };
 
   return (
-    <div className="keyboard-scroll" ref={scrollRef}>
+    <div className="keyboard-scroll" ref={scrollRef} data-more={moreAt}>
       {above}
       <svg
         className={guided ? 'keyboard keyboard--guided' : 'keyboard'}

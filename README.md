@@ -258,8 +258,21 @@ brings the menus back.
 The page never scrolls. The header and controls stay put, the score or PDF
 scrolls in its own region, and the keyboard is pinned across the bottom so
 the keys to play are always visible no matter how long the piece is. For
-MusicXML the score also scrolls itself to keep the current note in view, and
-the keyboard strip scrolls sideways to the keys you need on a narrow screen.
+MusicXML the score also scrolls itself to keep the current note in view.
+
+**The keyboard follows what you play.** Eighty-eight keys at a size worth
+tapping are wider than a phone, so on a phone held upright the strip shows
+about half of them and scrolls sideways for the rest. It moves itself to keep
+the keys that matter on screen — the ones a score or exercise is asking for,
+and the ones under your fingers — in every mode, so a note you play at the top
+of the keyboard brings that end into view along with its bar in the live roll.
+It only moves when something needed is actually off the edge: play inside the
+window you have and nothing shifts, and a position you scrolled to by hand
+stays where you put it. Where what you are playing and what is being asked for
+cannot fit in one window — a wrong note two octaves down — it stays with what
+the score wants. A soft fade at whichever end has more behind it is what says
+the keyboard carries on that way. On a screen wide enough for all 88 keys
+nothing scrolls and there is no fade.
 
 ## Practice modes
 
@@ -487,6 +500,13 @@ page and back on every keypress. It is now one height either way, and a chord
 too wide for it scrolls sideways inside it rather than wrapping, which would do
 the same thing.
 
+**The edge fade is a mask, not an overlay.** A gradient drawn over the ends of
+the keyboard strip would sit between you and the keys underneath, swallowing
+taps on the lowest and highest notes on screen. `mask-image` on the scrolling
+box fades the same pixels without adding anything to hit, and because a mask
+applies to the box rather than its contents, the fade stays pinned to the
+edges of the screen instead of scrolling away with the keys.
+
 **A dot is two things in VexFlow, and `Dot` only draws one of them.**
 `Dot.buildAndAttach` adds the dot glyph; it does not add the half again to
 the note's *ticks*. A dotted note built that way is still formatted as an
@@ -516,14 +536,18 @@ would need a native CoreMIDI bridge behind the same interface.
 
 ## What has and has not been tested
 
-**Verified:** 401 unit tests — among them pitch spelling across all 15 keys
+**Verified:** 416 unit tests — among them pitch spelling across all 15 keys
 and all 88 notes, MIDI parsing, the sustain pedal, the practice state
 machine and its chord window, PDF reading against real Sibelius and
 MuseScore exports, corrections, the device library, the training
 generator (ranges, stepwise motion, hand changes, accidentals, intervals),
 the free-play recorder (pairing releases with presses, chords, the pedal,
 joining notes up, and the tempo fit), and the live trail (held notes, chords
-as moments, and what is forgotten).
+as moments, and what is forgotten), and the keyboard's follow-the-keys rules
+(staying put when everything is in view or when nothing is being played,
+centring a key off either edge, keeping a hand-scrolled position, holding a
+guide and a played key together, preferring the guide when they cannot fit,
+and which end has more keyboard behind it).
 End-to-end in headless Chromium: all three modes, PDF reading and
 correcting, the library across reloads, offline use through the service
 worker, playing training exercises through (including a simulated MIDI
@@ -540,7 +564,14 @@ written out, saved, reopened from the library and read back as a score, and
 the live view — the trail marching, the roll animating only while something
 is moving, each note drawn over its own key to the pixel at both desktop and
 phone widths, and the roll colouring right and wrong in Practice and Training
-while staying plain in free play. The training sheet was checked with the real VexFlow.
+while staying plain in free play. The keyboard following what you play was
+checked at phone width: a note two octaves above the visible keys scrolls
+itself into view in free play and in training, a note already on screen moves
+nothing, the fade flips from one end to both to the other as the strip
+scrolls, a desktop-width window shows neither, the guides stay in view
+note by note through a MIDI score, a wrong note two octaves below does not
+pull the view off them, and the roll's bars still land on their keys to the
+pixel with the strip scrolled. The training sheet was checked with the real VexFlow.
 
 **Not verified:** **OpenSheetMusicDisplay** (MusicXML engraving) has only run
 against a recording stub, not the real library, and the touch gestures have

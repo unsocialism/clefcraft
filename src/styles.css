@@ -1597,3 +1597,34 @@ body {
 .toolbar__field--inline input[type='number'] {
   width: 4.5rem;
 }
+
+/* The keyboard runs past the screen on a phone. A fade at whichever end has
+   more behind it is the only thing saying so — without it the instrument
+   simply looks like it stops at B5. Masked rather than overlaid, so the keys
+   underneath stay tappable. */
+.keyboard-scroll[data-more='left'] {
+  mask-image: linear-gradient(to right, transparent 0, #000 22px);
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 22px);
+}
+
+.keyboard-scroll[data-more='right'] {
+  mask-image: linear-gradient(to left, transparent 0, #000 22px);
+  -webkit-mask-image: linear-gradient(to left, transparent 0, #000 22px);
+}
+
+.keyboard-scroll[data-more='both'] {
+  mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    #000 22px,
+    #000 calc(100% - 22px),
+    transparent 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    #000 22px,
+    #000 calc(100% - 22px),
+    transparent 100%
+  );
+}
