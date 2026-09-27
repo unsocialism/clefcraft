@@ -42,6 +42,12 @@ const BAR_PADDING = 16;
 const INK = '#16191d';
 const RIGHT = '#2f6df6';
 const LEFT = '#e07b00';
+/**
+ * The hand you are not practising. Pale enough to read as "not yours", dark
+ * enough to still be read: the point of leaving it on the page is that you
+ * can see what the other hand is doing and where you are in the piece.
+ */
+const QUIET = '#b9bfc9';
 const NOW_BG_RIGHT = 'rgba(47, 109, 246, 0.13)';
 const NOW_BG_LEFT = 'rgba(240, 140, 0, 0.16)';
 const NOW_BG_BOTH = 'rgba(92, 104, 128, 0.13)';
@@ -68,6 +74,12 @@ export interface MidiSheetProps {
   readonly playing?: boolean;
   /** Bars being repeated, marked on the page so the section is visible. */
   readonly loop?: { readonly fromMeasure: number; readonly toMeasure: number } | null;
+  /**
+   * A staff to grey back while the other hand is practised on its own —
+   * 0 for the treble, 1 for the bass, null for the piece as written. Its
+   * notes stay on the page, and stop being pointed at.
+   */
+  readonly quiet?: 0 | 1 | null;
 }
 
 function keysOf(entry: EngravedEntry, clef: 'treble' | 'bass'): string[] {
@@ -125,13 +137,14 @@ interface Built {
   readonly minWidth: number;
 }
 
-function buildBar(measure: EngravedMeasure, index: number): Built {
+function buildBar(measure: EngravedMeasure, index: number, quiet: 0 | 1 | null): Built {
   const voices: Voice[] = [];
   const notes: StaveNote[][] = [];
   ([0, 1] as const).forEach((staff) => {
     const clef = staff === 0 ? 'treble' : 'bass';
+    const hand = staff === quiet ? QUIET : staff === 0 ? RIGHT : LEFT;
     const built = measure.staves[staff].map((entry) =>
-      buildNote(entry, clef, entry.eventIndex === null ? INK : staff === 0 ? RIGHT : LEFT),
+      buildNote(entry, clef, entry.eventIndex === null ? INK : hand),
     );
     notes.push(built);
     voices.push(
@@ -157,7 +170,12 @@ interface Engraving {
   readonly times: TimeMap;
 }
 
-function draw(host: HTMLDivElement, shownWidth: number, midiScore: MidiScore): Engraving {
+function draw(
+  host: HTMLDivElement,
+  shownWidth: number,
+  midiScore: MidiScore,
+  quiet: 0 | 1 | null = null,
+): Engraving {
   host.replaceChildren();
   const key = keySignatureByFifths(midiScore.fifths);
   const leadIn = LEAD_IN + Math.abs(midiScore.fifths) * KEY_WIDTH;
@@ -165,7 +183,7 @@ function draw(host: HTMLDivElement, shownWidth: number, midiScore: MidiScore): E
   // Build every bar first, so each one's real width is known, then break
   // the lines where they actually fill up. Guessing a fixed number of bars
   // per line is what makes a bar of sixteenths spill off the page.
-  const built = midiScore.measures.map((measure, index) => buildBar(measure, index));
+  const built = midiScore.measures.map((measure, index) => buildBar(measure, index, quiet));
 
   // The page is drawn in VexFlow's units and scaled to the space available.
   // A bar too wide to fit even on its own widens the page instead, which
@@ -252,7 +270,7 @@ function draw(host: HTMLDivElement, shownWidth: number, midiScore: MidiScore): E
         .draw();
 
       const beams: Beam[] = [];
-      const ties: { from: StaveNote; to: StaveNote }[] = [];
+      const ties: { from: StaveNote; to: StaveNote; staff: 0 | 1 }[] = [];
       ([0, 1] as const).forEach((staff) => {
         const notes = bar.notes[staff];
         const entries = bar.measure.staves[staff];
@@ -262,19 +280,24 @@ function draw(host: HTMLDivElement, shownWidth: number, midiScore: MidiScore): E
         // Rests are handed in too, with beaming across them turned off, so
         // a beam breaks where the music does; the groups come from the time
         // signature, so 6/8 beams in threes and 4/4 in twos.
-        beams.push(
-          ...Beam.generateBeams(notes, {
-            beam_rests: false,
-            groups: Beam.getDefaultBeamGroups(`${bar.measure.beats}/${bar.measure.beatType}`),
-          }),
-        );
+        const made = Beam.generateBeams(notes, {
+          beam_rests: false,
+          groups: Beam.getDefaultBeamGroups(`${bar.measure.beats}/${bar.measure.beatType}`),
+        });
+        // Beams carry their own colour: left to themselves they stay black,
+        // which on a quieted hand reads as the notes having gone pale rather
+        // than the hand being off duty.
+        if (staff === quiet) {
+          for (const beam of made) beam.setStyle({ fillStyle: QUIET, strokeStyle: QUIET });
+        }
+        beams.push(...made);
         entries.forEach((entry, i) => {
           const next = notes[i + 1];
-          if (entry.tieToNext && next) ties.push({ from: notes[i]!, to: next });
+          if (entry.tieToNext && next) ties.push({ from: notes[i]!, to: next, staff });
         });
         const waiting = pendingTies[staff];
         const first = notes[0];
-        if (waiting && !lineStart && first) ties.push({ from: waiting, to: first });
+        if (waiting && !lineStart && first) ties.push({ from: waiting, to: first, staff });
         const carriesOver = entries[entries.length - 1]?.tieToNext ?? false;
         pendingTies[staff] = carriesOver ? (notes[notes.length - 1] ?? null) : null;
 
@@ -295,7 +318,9 @@ function draw(host: HTMLDivElement, shownWidth: number, midiScore: MidiScore): E
       pair.forEach((voice, i) => voice.draw(context, i === 0 ? treble : bass));
       for (const beam of beams) beam.setContext(context).draw();
       for (const tie of ties) {
-        new StaveTie({ first_note: tie.from, last_note: tie.to }).setContext(context).draw();
+        const drawnTie = new StaveTie({ first_note: tie.from, last_note: tie.to });
+        if (tie.staff === quiet) drawnTie.setStyle({ fillStyle: QUIET, strokeStyle: QUIET });
+        drawnTie.setContext(context).draw();
       }
 
       // Where this bar's moments landed. Read after formatting, because that
@@ -334,7 +359,13 @@ function draw(host: HTMLDivElement, shownWidth: number, midiScore: MidiScore): E
   svg?.setAttribute('height', String(height * scale));
 
   const spots = new Map<number, Spot>();
-  for (const [event, items] of drawn) {
+  for (const [event, all] of drawn) {
+    // The band marks what to play. With one hand quiet it hugs that hand's
+    // notes alone, so it does not reach across a staff nothing is asking
+    // you to play — unless the moment is only in the quiet hand, where
+    // there is nothing else to mark.
+    const loud = all.filter((item) => item.staff !== quiet);
+    const items = loud.length > 0 ? loud : all;
     const boxes = items.map((item) => item.note.getBoundingBox());
     const left = Math.min(...boxes.map((b) => b.getX()));
     const top = Math.min(...boxes.map((b) => b.getY()));
@@ -550,6 +581,7 @@ export function MidiSheet({
   clock = null,
   playing = false,
   loop = null,
+  quiet = null,
 }: MidiSheetProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const spotsRef = useRef<Map<number, Spot>>(new Map());
@@ -577,7 +609,7 @@ export function MidiSheet({
     const host = hostRef.current;
     if (!host) return;
     try {
-      const engraving = draw(host, width, midiScore);
+      const engraving = draw(host, width, midiScore, quiet);
       spotsRef.current = engraving.spots;
       timesRef.current = engraving.times;
       setError(null);
@@ -586,20 +618,20 @@ export function MidiSheet({
       timesRef.current = [];
       setError(cause instanceof Error ? cause.message : String(cause));
     }
-  }, [midiScore, width]);
+  }, [midiScore, width, quiet]);
 
   useEffect(() => {
     const host = hostRef.current;
     if (!host) return;
     placeLoopBand(host, timesRef.current, loop);
-  }, [loop, width, midiScore, error]);
+  }, [loop, width, midiScore, quiet, error]);
 
   useEffect(() => {
     const host = hostRef.current;
     if (!host) return;
     placeBand(host, currentEvent === null ? undefined : spotsRef.current.get(currentEvent));
     if (follow) keepInView(host.querySelector('.midi-sheet__now'));
-  }, [currentEvent, follow, width, midiScore, error]);
+  }, [currentEvent, follow, width, midiScore, quiet, error]);
 
   // The sweeping line, driven by the clock rather than by React: it reads
   // the position every frame and moves one rectangle.
@@ -621,7 +653,7 @@ export function MidiSheet({
       const still = hostRef.current;
       if (still) placePlayhead(still, timesRef.current, null);
     };
-  }, [clock, playing, width, midiScore, error]);
+  }, [clock, playing, width, midiScore, quiet, error]);
 
   return (
     <div className="staff midi-sheet">

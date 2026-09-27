@@ -27,7 +27,7 @@ import {
   type PracticeMode,
   type PracticeState,
 } from '../core/score/practiceEngine.ts';
-import { EMPTY_SCORE, type Score } from '../core/score/types.ts';
+import { EMPTY_SCORE, type HandChoice, type Score } from '../core/score/types.ts';
 
 /** A note-on exactly as it arrived, before the engine judged it. */
 export interface Arrival {
@@ -42,6 +42,8 @@ export interface PracticeSession {
   readonly state: PracticeState;
   readonly mode: PracticeMode;
   readonly requireClean: boolean;
+  /** The hand being practised, or `both` for the piece as written. */
+  readonly hands: HandChoice;
   /** Null when chords may be rolled out at any speed. */
   readonly chordWindowMs: number | null;
   readonly tempoBpm: number;
@@ -81,6 +83,12 @@ export interface PracticeSession {
    */
   setScore(score: Score, options?: { keepPosition?: boolean }): void;
   setMode(mode: PracticeMode): void;
+  /**
+   * Practise one hand at a time, or the piece as written. Changing it puts
+   * the cursor on the nearest moment that hand actually plays and starts
+   * the count of mistakes again — it is a different thing being practised.
+   */
+  setHands(hands: HandChoice): void;
   setRequireClean(value: boolean): void;
   setChordWindowMs(ms: number | null): void;
   setIgnoreDuplicatesMs(ms: number | null): void;
@@ -157,6 +165,7 @@ export function usePractice(): PracticeSession {
   const [state, setState] = useState<PracticeState>(() => startPractice(EMPTY_SCORE));
   const [mode, setMode] = useState<PracticeMode>('wait');
   const [requireClean, setRequireClean] = useState(false);
+  const [hands, setHandsState] = useState<HandChoice>('both');
   const [chordWindowMs, setChordWindowMs] = useState<number | null>(DEFAULT_CHORD_WINDOW_MS);
   const [tempoBpm, setTempoBpm] = useState(80);
   const [running, setRunning] = useState(false);
@@ -184,7 +193,7 @@ export function usePractice(): PracticeSession {
   const scoreRef = useRef(score);
   scoreRef.current = score;
   const optionsRef = useRef(DEFAULT_PRACTICE_OPTIONS);
-  optionsRef.current = { mode, requireClean, chordWindowMs };
+  optionsRef.current = { mode, requireClean, chordWindowMs, hands };
   const stateRef = useRef(state);
   stateRef.current = state;
 
@@ -192,8 +201,8 @@ export function usePractice(): PracticeSession {
   // the score changes, and read through a ref by the clock, which owns the
   // cursor while it runs and must not be restarted for it.
   const loopRange = useMemo(
-    () => (loop ? measureRange(score, loop.fromMeasure, loop.toMeasure) : null),
-    [loop, score],
+    () => (loop ? measureRange(score, loop.fromMeasure, loop.toMeasure, hands) : null),
+    [loop, score, hands],
   );
   const loopRef = useRef(loop);
   loopRef.current = loop;
@@ -204,8 +213,13 @@ export function usePractice(): PracticeSession {
     setLoopState(next);
     setLoopProgress(NO_PASSES);
     if (!next) return;
-    const range = measureRange(scoreRef.current, next.fromMeasure, next.toMeasure);
-    if (range) setState(seekToIndex(scoreRef.current, range.firstIndex));
+    const range = measureRange(
+      scoreRef.current,
+      next.fromMeasure,
+      next.toMeasure,
+      optionsRef.current.hands,
+    );
+    if (range) setState(seekToIndex(scoreRef.current, range.firstIndex, optionsRef.current.hands));
   }, []);
 
   /**
@@ -236,7 +250,19 @@ export function usePractice(): PracticeSession {
       countInRef.current = settings.countIn;
       setTempoBpm((bpm) => stepUpTempo(bpm, FASTEST_BUILD_UP));
     }
-    setState(seekToIndex(scoreRef.current, range.firstIndex));
+    setState(seekToIndex(scoreRef.current, range.firstIndex, optionsRef.current.hands));
+  }, []);
+
+  /**
+   * Switching hands lands on the nearest moment the new hand plays. Seeking
+   * clears the counters, which is right: the mistakes you made with the
+   * other hand are not this hand's.
+   */
+  const setHands = useCallback((next: HandChoice) => {
+    setHandsState(next);
+    optionsRef.current = { ...optionsRef.current, hands: next };
+    setState((previous) => seekToIndex(scoreRef.current, previous.index, next));
+    setLoopProgress(NO_PASSES);
   }, []);
 
   const setScore = useCallback((next: Score, options?: { keepPosition?: boolean }) => {
@@ -248,11 +274,15 @@ export function usePractice(): PracticeSession {
     }
     if (options?.keepPosition) {
       setState((previous) =>
-        seekToIndex(next, Math.min(previous.index, Math.max(0, next.events.length - 1))),
+        seekToIndex(
+          next,
+          Math.min(previous.index, Math.max(0, next.events.length - 1)),
+          optionsRef.current.hands,
+        ),
       );
       return;
     }
-    setState(startPractice(next));
+    setState(startPractice(next, optionsRef.current.hands));
     setRunning(false);
     if (next.tempoBpm && next.tempoBpm > 0) setTempoBpm(Math.round(next.tempoBpm));
   }, []);
@@ -312,7 +342,7 @@ export function usePractice(): PracticeSession {
   }, []);
 
   const restart = useCallback(() => {
-    setState(startPractice(scoreRef.current));
+    setState(startPractice(scoreRef.current, optionsRef.current.hands));
     setRunning(false);
     setArrivals([]);
     setRawMessages([]);
@@ -320,7 +350,7 @@ export function usePractice(): PracticeSession {
   }, []);
 
   const seekMeasure = useCallback((measure: number) => {
-    setState(seekToMeasure(scoreRef.current, measure));
+    setState(seekToMeasure(scoreRef.current, measure, optionsRef.current.hands));
   }, []);
 
   const start = useCallback(() => {
@@ -329,7 +359,7 @@ export function usePractice(): PracticeSession {
     const range = rangeRef.current;
     const here = stateRef.current;
     if (range && (here.finished || here.index < range.firstIndex || here.index > range.lastIndex)) {
-      setState(seekToIndex(scoreRef.current, range.firstIndex));
+      setState(seekToIndex(scoreRef.current, range.firstIndex, optionsRef.current.hands));
     }
     countInRef.current = true;
     setRunning(true);
@@ -391,7 +421,9 @@ export function usePractice(): PracticeSession {
           frame = requestAnimationFrame(tick);
           return;
         }
-        setState((previous) => advanceToTime(scoreRef.current, previous, reading.quarters));
+        setState((previous) =>
+          advanceToTime(scoreRef.current, previous, reading.quarters, optionsRef.current.hands),
+        );
         if (reading.quarters >= scoreLengthQuarters(scoreRef.current)) {
           clock.current = CLOCK_IDLE;
           setRunning(false);
@@ -427,7 +459,7 @@ export function usePractice(): PracticeSession {
     return () => clearTimeout(timer);
   }, [state, chordWindowMs]);
 
-  const ahead = useMemo(() => upcoming(score, state, LOOKAHEAD), [score, state]);
+  const ahead = useMemo(() => upcoming(score, state, LOOKAHEAD, hands), [score, state, hands]);
 
   const progress = useMemo(() => {
     if (score.events.length === 0) return 0;
@@ -440,6 +472,7 @@ export function usePractice(): PracticeSession {
     state,
     mode,
     requireClean,
+    hands,
     chordWindowMs,
     tempoBpm,
     running,
@@ -456,6 +489,7 @@ export function usePractice(): PracticeSession {
     setScore,
     setMode,
     setRequireClean,
+    setHands,
     setChordWindowMs,
     setIgnoreDuplicatesMs,
     setTempoBpm,

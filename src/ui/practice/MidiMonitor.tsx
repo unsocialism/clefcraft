@@ -19,6 +19,7 @@ const VERDICT_LABEL: Record<PressRecord['verdict'], string> = {
   wrong: 'not in this chord',
   repeat: 'already had it',
   restarted: 'too late — restarted the chord',
+  'other-hand': 'the other hand — not counted',
 };
 
 /** Default echo filter: wide enough for a driver echo, far below a real repeat. */

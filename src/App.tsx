@@ -716,6 +716,7 @@ export function App() {
                   state={practice.state}
                   mode={practice.mode}
                   requireClean={practice.requireClean}
+                  hands={practice.hands}
                   chordWindowMs={practice.chordWindowMs}
                   tempoBpm={practice.tempoBpm}
                   running={practice.running}
@@ -728,6 +729,7 @@ export function App() {
                   onLoopChange={practice.setLoop}
                   onModeChange={practice.setMode}
                   onRequireCleanChange={practice.setRequireClean}
+                  onHandsChange={practice.setHands}
                   onChordWindowChange={practice.setChordWindowMs}
                   onTempoChange={practice.setTempoBpm}
                   onStart={practice.start}
@@ -958,6 +960,7 @@ export function App() {
                 clock={practice.clock}
                 playing={playingAlong}
                 loop={practice.loopRange}
+                quiet={practice.hands === 'both' ? null : practice.hands === 'right' ? 1 : 0}
               />
             )}
 

@@ -1,4 +1,11 @@
-import { expectedNotes, type Score, type ScoreEvent } from './types.ts';
+import {
+  expectedNotes,
+  handOf,
+  type Hand,
+  type HandChoice,
+  type Score,
+  type ScoreEvent,
+} from './types.ts';
 
 /**
  * The practice state machine.
@@ -36,12 +43,20 @@ export interface PracticeOptions {
    * better default for learning, and mistakes are counted either way.
    */
   readonly requireClean: boolean;
+  /**
+   * Which hand to practise. With one chosen, the other hand's notes are
+   * neither asked for nor held against you: the cursor walks past the
+   * moments only that hand plays, and its notes pass without comment if you
+   * let it come along for the ride.
+   */
+  readonly hands?: HandChoice;
 }
 
 export const DEFAULT_PRACTICE_OPTIONS: PracticeOptions = {
   mode: 'wait',
   requireClean: false,
   chordWindowMs: null,
+  hands: 'both',
 };
 
 export interface PracticeState {
@@ -69,7 +84,8 @@ export interface PracticeState {
 
 export interface PressRecord {
   readonly midi: number;
-  readonly verdict: 'correct' | 'wrong' | 'restarted' | 'repeat';
+  /** `other-hand` is a note of the hand you are not practising: not judged. */
+  readonly verdict: 'correct' | 'wrong' | 'restarted' | 'repeat' | 'other-hand';
   readonly at: number;
 }
 
@@ -93,22 +109,61 @@ export interface UpcomingEvent {
   readonly remaining: readonly number[];
 }
 
-/** An event with nothing to strike — every note tied over — is not playable. */
-function isPlayable(event: ScoreEvent): boolean {
-  return expectedNotes(event).size > 0;
+/**
+ * An event with nothing to strike is not playable: every note tied over
+ * from the last one, or — when a single hand is being practised — every
+ * note belonging to the other hand.
+ */
+function isPlayable(event: ScoreEvent, hands: HandChoice = 'both'): boolean {
+  return expectedNotes(event, hands).size > 0;
 }
 
 /** First playable event at or after `from`, or -1 when the score is done. */
-function nextPlayableIndex(score: Score, from: number): number {
+function nextPlayableIndex(score: Score, from: number, hands: HandChoice = 'both'): number {
   for (let i = Math.max(0, from); i < score.events.length; i++) {
     const event = score.events[i];
-    if (event && isPlayable(event)) return i;
+    if (event && isPlayable(event, hands)) return i;
   }
   return -1;
 }
 
-export function startPractice(score: Score): PracticeState {
-  const index = nextPlayableIndex(score, 0);
+/**
+ * How far either side of the cursor a note of the other hand is still
+ * recognised as that hand's, in quarter notes.
+ *
+ * Needed because the two hands do not move together: practising the right
+ * hand, the cursor stops only at right-hand moments, so a left hand playing
+ * along sounds its notes between them and often a beat or so ahead. Half a
+ * bar of common time either way covers that without turning every wrong note
+ * into "oh, that was probably the other hand".
+ */
+const OTHER_HAND_REACH_QUARTERS = 2;
+
+/** Is this press a note the other hand plays around here? */
+function isOtherHandNote(
+  score: Score,
+  index: number,
+  midi: number,
+  hands: HandChoice,
+): boolean {
+  if (hands === 'both') return false;
+  const here = score.events[index];
+  if (!here) return false;
+  const other: Hand = hands === 'right' ? 'left' : 'right';
+  const from = here.onsetQuarters - OTHER_HAND_REACH_QUARTERS;
+  const to = here.onsetQuarters + OTHER_HAND_REACH_QUARTERS;
+  for (const event of score.events) {
+    if (event.onsetQuarters < from) continue;
+    if (event.onsetQuarters > to) break;
+    for (const note of event.notes) {
+      if (note.midi === midi && handOf(note) === other) return true;
+    }
+  }
+  return false;
+}
+
+export function startPractice(score: Score, hands: HandChoice = 'both'): PracticeState {
+  const index = nextPlayableIndex(score, 0, hands);
   return {
     index: index === -1 ? 0 : index,
     struck: new Set(),
@@ -128,8 +183,8 @@ export function currentEvent(score: Score, state: PracticeState): ScoreEvent | n
 }
 
 /** Move to the next playable event, banking whether this one was clean. */
-function advance(score: Score, state: PracticeState): PracticeState {
-  const next = nextPlayableIndex(score, state.index + 1);
+function advance(score: Score, state: PracticeState, hands: HandChoice): PracticeState {
+  const next = nextPlayableIndex(score, state.index + 1, hands);
   const cleanEvents = state.wrongHere === 0 ? state.cleanEvents + 1 : state.cleanEvents;
   if (next === -1) {
     return {
@@ -167,9 +222,14 @@ export function pressNote(
   const event = currentEvent(score, state);
   if (!event) return state;
 
-  const expected = expectedNotes(event);
+  const expected = expectedNotes(event, options.hands ?? 'both');
 
   if (!expected.has(midi)) {
+    // A note the other hand plays around here is not a mistake — it is the
+    // hand you are not practising, coming along for the ride.
+    if (isOtherHandNote(score, state.index, midi, options.hands ?? 'both')) {
+      return { ...state, recent: remember(state, midi, 'other-hand', now) };
+    }
     return {
       ...state,
       wrongHere: state.wrongHere + 1,
@@ -214,7 +274,7 @@ export function pressNote(
     // The clock owns the cursor; just remember the chord was completed.
     return next;
   }
-  return advance(score, next);
+  return advance(score, next, options.hands ?? 'both');
 }
 
 /**
@@ -254,6 +314,7 @@ export function advanceToTime(
   score: Score,
   state: PracticeState,
   quarters: number,
+  hands: HandChoice = 'both',
 ): PracticeState {
   if (score.events.length === 0) return state;
 
@@ -262,7 +323,7 @@ export function advanceToTime(
     const event = score.events[i];
     if (!event) continue;
     if (event.onsetQuarters <= quarters + 1e-9) {
-      if (isPlayable(event)) target = i;
+      if (isPlayable(event, hands)) target = i;
     } else {
       break;
     }
@@ -294,8 +355,12 @@ export function scoreLengthQuarters(score: Score): number {
   return last ? last.onsetQuarters + last.durationQuarters : 0;
 }
 
-export function seekToIndex(score: Score, index: number): PracticeState {
-  const target = nextPlayableIndex(score, index);
+export function seekToIndex(
+  score: Score,
+  index: number,
+  hands: HandChoice = 'both',
+): PracticeState {
+  const target = nextPlayableIndex(score, index, hands);
   return {
     index: target === -1 ? 0 : target,
     struck: new Set(),
@@ -334,7 +399,12 @@ export interface MeasureRange {
  * Null when nothing at all falls in it: a score can have bars with no notes
  * in them, and there is nothing to loop there.
  */
-export function measureRange(score: Score, from: number, to: number): MeasureRange | null {
+export function measureRange(
+  score: Score,
+  from: number,
+  to: number,
+  hands: HandChoice = 'both',
+): MeasureRange | null {
   if (score.events.length === 0) return null;
   const last = Math.max(1, score.measureCount);
   const low = Math.min(Math.max(1, Math.min(from, to)), last);
@@ -351,9 +421,17 @@ export function measureRange(score: Score, from: number, to: number): MeasureRan
 
   const first = score.events[firstIndex]!;
   const final = score.events[lastIndex]!;
+  // Counted for the hand being practised, because this is what a pass is
+  // measured against: counting the whole texture would make a clean pass of
+  // one hand impossible to reach.
   let noteCount = 0;
   for (let i = firstIndex; i <= lastIndex; i++) {
-    noteCount += score.events[i]?.notes.length ?? 0;
+    const event = score.events[i];
+    if (!event) continue;
+    noteCount +=
+      hands === 'both'
+        ? event.notes.length
+        : event.notes.filter((note) => handOf(note) === hands).length;
   }
   return {
     fromMeasure: low,
@@ -380,9 +458,13 @@ export function stepUpTempo(bpm: number, limit: number): number {
   return Math.min(limit, bpm + TEMPO_STEP_BPM);
 }
 
-export function seekToMeasure(score: Score, measure: number): PracticeState {
+export function seekToMeasure(
+  score: Score,
+  measure: number,
+  hands: HandChoice = 'both',
+): PracticeState {
   const index = score.events.findIndex((event) => event.measure >= measure);
-  return seekToIndex(score, index === -1 ? score.events.length : index);
+  return seekToIndex(score, index === -1 ? score.events.length : index, hands);
 }
 
 /**
@@ -394,6 +476,7 @@ export function upcoming(
   score: Score,
   state: PracticeState,
   count = 3,
+  hands: HandChoice = 'both',
 ): readonly UpcomingEvent[] {
   if (state.finished || count <= 0) return [];
 
@@ -404,12 +487,12 @@ export function upcoming(
   while (distance < count && index !== -1 && index < score.events.length) {
     const event = score.events[index];
     if (!event) break;
-    const expected = expectedNotes(event);
+    const expected = expectedNotes(event, hands);
     const remaining =
       distance === 0 ? [...expected].filter((midi) => !state.struck.has(midi)) : [...expected];
     result.push({ event, distance, remaining: remaining.sort((a, b) => a - b) });
     distance++;
-    index = nextPlayableIndex(score, index + 1);
+    index = nextPlayableIndex(score, index + 1, hands);
   }
 
   return result;

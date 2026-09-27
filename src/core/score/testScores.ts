@@ -52,6 +52,25 @@ export const C_MAJOR_SCALE: Score = buildScore(
   { title: 'C major scale', tempoBpm: 80 },
 );
 
+/**
+ * Two hands that do not move together: a right hand on every quarter over a
+ * left hand that plays on some of them and alone on one. The shape that
+ * makes practising a single hand worth testing — the cursor has to walk past
+ * the moment only the other hand plays.
+ *
+ * Bar 1 is events 0–3 and bar 2 is events 4–7.
+ */
+export const HANDS_APART: Score = buildScore([
+  { notes: [{ midi: 60 }, { midi: 48, staff: 2 }] },
+  { notes: [62] },
+  { notes: [{ midi: 64 }, { midi: 50, staff: 2 }] },
+  { notes: [{ midi: 52, staff: 2 }] },
+  { notes: [{ midi: 65 }, { midi: 53, staff: 2 }] },
+  { notes: [67] },
+  { notes: [69] },
+  { notes: [{ midi: 71 }, { midi: 55, staff: 2 }] },
+], { title: 'Hands apart' });
+
 /** Two hands, chords against a bass line — the shape a real piece has. */
 export const TWO_HAND_DEMO: Score = buildScore(
   [

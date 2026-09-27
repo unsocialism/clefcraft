@@ -17,7 +17,7 @@ import {
   type PracticeOptions,
   type PracticeState,
 } from './practiceEngine.ts';
-import { C_MAJOR_SCALE, TWO_HAND_DEMO, buildScore } from './testScores.ts';
+import { C_MAJOR_SCALE, HANDS_APART, TWO_HAND_DEMO, buildScore } from './testScores.ts';
 import { expectedNotes } from './types.ts';
 
 const WAIT = DEFAULT_PRACTICE_OPTIONS;
@@ -592,5 +592,112 @@ describe('building a passage up to speed', () => {
     assert.equal(stepUpTempo(98, 100), 100);
     assert.equal(stepUpTempo(100, 100), 100);
     assert.equal(stepUpTempo(120, 100), 120, 'already faster than asked: leave it alone');
+  });
+});
+
+describe('practising one hand', () => {
+  const RIGHT: PracticeOptions = { ...WAIT, hands: 'right' };
+  const LEFT: PracticeOptions = { ...WAIT, hands: 'left' };
+
+  it('asks only for that hand at a moment both play', () => {
+    const event = HANDS_APART.events[0]!;
+    assert.deepEqual([...expectedNotes(event, 'right')], [60]);
+    assert.deepEqual([...expectedNotes(event, 'left')], [48]);
+    assert.deepEqual([...expectedNotes(event)].sort((a, b) => a - b), [48, 60]);
+  });
+
+  it('starts on the first moment that hand plays', () => {
+    // The left hand's first note is at event 0 here, so start from a score
+    // whose opening moment belongs to the right hand alone.
+    const score = buildScore([{ notes: [72] }, { notes: [{ midi: 48, staff: 2 }] }]);
+    assert.equal(startPractice(score, 'left').index, 1);
+    assert.equal(startPractice(score, 'right').index, 0);
+  });
+
+  it('walks past a moment only the other hand plays', () => {
+    let state = startPractice(HANDS_APART, 'right');
+    state = play(HANDS_APART, state, [60, 62, 64], RIGHT);
+    // Event 3 is the left hand alone: the right hand's next note is event 4.
+    assert.equal(state.index, 4);
+    assert.equal(state.totalMistakes, 0);
+  });
+
+  it('plays a whole piece with one hand and counts no mistakes', () => {
+    let state = startPractice(HANDS_APART, 'right');
+    state = play(HANDS_APART, state, [60, 62, 64, 65, 67, 69, 71], RIGHT);
+    assert.equal(state.finished, true);
+    assert.equal(state.totalMistakes, 0);
+    assert.equal(state.correctNotes, 7);
+
+    let other = startPractice(HANDS_APART, 'left');
+    other = play(HANDS_APART, other, [48, 50, 52, 53, 55], LEFT);
+    assert.equal(other.finished, true);
+    assert.equal(other.totalMistakes, 0);
+  });
+
+  it('lets the other hand come along without counting it', () => {
+    let state = startPractice(HANDS_APART, 'right');
+    state = pressNote(HANDS_APART, state, 48, RIGHT);
+    assert.equal(state.totalMistakes, 0, 'the left hand is not a mistake');
+    assert.equal(state.correctNotes, 0, 'nor is it progress');
+    assert.equal(state.index, 0, 'and it does not move the cursor');
+    assert.equal(state.recent[0]?.verdict, 'other-hand');
+  });
+
+  it('still counts a wrong note of the hand being practised', () => {
+    let state = startPractice(HANDS_APART, 'right');
+    state = pressNote(HANDS_APART, state, 61, RIGHT);
+    assert.equal(state.totalMistakes, 1);
+    assert.equal(state.recent[0]?.verdict, 'wrong');
+  });
+
+  it('counts a note the other hand plays far off as a mistake', () => {
+    // The left hand's 55 is four bars-worth of quarters away from the cursor:
+    // near enough to the piece, nowhere near here.
+    let state = startPractice(HANDS_APART, 'right');
+    state = pressNote(HANDS_APART, state, 55, RIGHT);
+    assert.equal(state.totalMistakes, 1);
+  });
+
+  it('offers only that hand to the keyboard guides', () => {
+    const state = startPractice(HANDS_APART, 'right');
+    const ahead = upcoming(HANDS_APART, state, 3, 'right');
+    assert.deepEqual(ahead.map((step) => step.remaining), [[60], [62], [64]]);
+    // The left hand's own next three skip the moments it does not play.
+    const left = upcoming(HANDS_APART, startPractice(HANDS_APART, 'left'), 3, 'left');
+    assert.deepEqual(left.map((step) => step.remaining), [[48], [50], [52]]);
+  });
+
+  it('counts a section by the hand being practised', () => {
+    const both = measureRange(HANDS_APART, 1, 1)!;
+    const right = measureRange(HANDS_APART, 1, 1, 'right')!;
+    const left = measureRange(HANDS_APART, 1, 1, 'left')!;
+    assert.equal(both.noteCount, 6);
+    assert.equal(right.noteCount, 3);
+    assert.equal(left.noteCount, 3);
+  });
+
+  it('puts the play-along cursor only on that hand', () => {
+    const start = startPractice(HANDS_APART, 'right');
+    // Three quarters in is the left hand's own moment; the right hand's
+    // cursor stays on the note before it.
+    assert.equal(advanceToTime(HANDS_APART, start, 3, 'right').index, 2);
+    assert.equal(advanceToTime(HANDS_APART, start, 3, 'left').index, 3);
+  });
+
+  it('seeks to a bar by way of that hand', () => {
+    const score = buildScore([
+      { notes: [60], measure: 1 },
+      { notes: [{ midi: 48, staff: 2 }], measure: 2 },
+      { notes: [64], measure: 2 },
+    ]);
+    assert.equal(seekToMeasure(score, 2, 'right').index, 2);
+    assert.equal(seekToMeasure(score, 2, 'left').index, 1);
+  });
+
+  it('keeps a unison between the staves for either hand', () => {
+    const score = buildScore([{ notes: [{ midi: 60 }, { midi: 60, staff: 2 }] }]);
+    assert.deepEqual([...expectedNotes(score.events[0]!, 'right')], [60]);
+    assert.deepEqual([...expectedNotes(score.events[0]!, 'left')], [60]);
   });
 });

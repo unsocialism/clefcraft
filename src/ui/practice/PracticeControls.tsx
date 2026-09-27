@@ -6,12 +6,24 @@ import {
 } from '../../hooks/usePractice.ts';
 import type { ClockReading } from '../../core/score/clock.ts';
 import type { PracticeMode } from '../../core/score/practiceEngine.ts';
-import type { Score } from '../../core/score/types.ts';
+import type { HandChoice, Score } from '../../core/score/types.ts';
 import type { PracticeState } from '../../core/score/practiceEngine.ts';
 import { BeatPulse } from './BeatPulse.tsx';
 
 /** Remembered between sessions: how you like a section to repeat. */
 const LOOP_KEYS = { countIn: 'clefcraft.loop.countIn', speedUp: 'clefcraft.loop.speedUp' } as const;
+
+/**
+ * The hand switch. Deliberately not remembered between sessions: a piece
+ * opened tomorrow should ask for both hands unless you say otherwise, where
+ * a forgotten "left hand only" would look like a score with half its notes
+ * missing.
+ */
+const HAND_LABEL: Record<HandChoice, string> = {
+  both: 'Both hands',
+  right: 'Right hand',
+  left: 'Left hand',
+};
 
 function readLoopPreference(key: keyof typeof LOOP_KEYS, fallback: boolean): boolean {
   try {
@@ -35,6 +47,7 @@ export interface PracticeControlsProps {
   readonly state: PracticeState;
   readonly mode: PracticeMode;
   readonly requireClean: boolean;
+  readonly hands: HandChoice;
   readonly chordWindowMs: number | null;
   readonly tempoBpm: number;
   readonly running: boolean;
@@ -48,6 +61,7 @@ export interface PracticeControlsProps {
   onLoopChange(loop: LoopSettings | null): void;
   onModeChange(mode: PracticeMode): void;
   onRequireCleanChange(value: boolean): void;
+  onHandsChange(hands: HandChoice): void;
   onChordWindowChange(ms: number | null): void;
   onTempoChange(bpm: number): void;
   onStart(): void;
@@ -61,6 +75,7 @@ export function PracticeControls({
   state,
   mode,
   requireClean,
+  hands,
   chordWindowMs,
   tempoBpm,
   running,
@@ -73,6 +88,7 @@ export function PracticeControls({
   onLoopChange,
   onModeChange,
   onRequireCleanChange,
+  onHandsChange,
   onChordWindowChange,
   onTempoChange,
   onStart,
@@ -118,6 +134,21 @@ export function PracticeControls({
           >
             Play along
           </button>
+        </div>
+
+        <div className="segmented" role="group" aria-label="Hands">
+          {(['both', 'right', 'left'] as const).map((choice) => (
+            <button
+              key={choice}
+              type="button"
+              className={
+                hands === choice ? 'segmented__option segmented__option--on' : 'segmented__option'
+              }
+              onClick={() => onHandsChange(choice)}
+            >
+              {HAND_LABEL[choice]}
+            </button>
+          ))}
         </div>
 
         {mode === 'tempo' && (

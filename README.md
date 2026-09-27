@@ -330,6 +330,38 @@ times a second.
 
 Both modes count mistakes and clean events, and you can jump to any measure.
 
+## One hand at a time
+
+**Both hands · Right hand · Left hand**, beside the mode buttons. Picking a
+hand makes the whole of practice about that hand: the cursor stops only where
+that hand plays and walks straight past the moments the other one has to
+itself, the keyboard lights up only its keys, and a section counts a clean
+pass by its notes alone. It works in both modes, with a repeated section, and
+whether the music came from a MIDI file, a MusicXML file or a PDF — the hand
+is the staff a note was written on, which every source carries.
+
+**The other hand stays on the page, greyed back.** Notes, beams and ties all
+go pale, so you can still see what the other hand is doing and where you are
+in the piece without it asking to be played. That is drawn on MIDI scores,
+which the app engraves itself; a MusicXML or PDF score is somebody else's
+page and cannot be redrawn, so there only the guides and the cursor change.
+The "play this now" band shrinks to the hand you are practising too, rather
+than reaching across a staff nothing is asking you for.
+
+**The other hand can come along for the ride.** Its notes are not counted
+correct and not counted as mistakes — they pass without comment, so a pass
+stays clean if your left hand joins in while you work on your right. A note
+counts as the other hand's when that hand plays it within two quarter notes
+of where the cursor is; the two hands do not move together, so some latitude
+is needed, but a note it plays four bars later is still a wrong note. Notes
+of the hand you *are* practising are judged exactly as before.
+
+Switching hands mid-piece lands on the nearest moment the new hand plays and
+starts the mistake count again — it is a different thing being practised. The
+choice is deliberately forgotten when you reload: a piece opened tomorrow
+should ask for both hands, where a remembered "left hand only" would look
+like a score with half its notes missing.
+
 ## Repeating a section
 
 *Repeat a section* turns the piece into the few bars you are actually working
@@ -500,6 +532,13 @@ page and back on every keypress. It is now one height either way, and a chord
 too wide for it scrolls sideways inside it rather than wrapping, which would do
 the same thing.
 
+**One hand is a filter, not a second score.** Practising the right hand does
+not build a right-hand score and hand it to the engine; it passes the choice
+down to the one place that decides what a moment asks for. Everything else —
+the cursor, the guides, the section counter, the play-along clock — already
+went through there, so they all learnt one hand at once, and a score still
+means the same thing to the library, the exporter and the page.
+
 **The edge fade is a mask, not an overlay.** A gradient drawn over the ends of
 the keyboard strip would sit between you and the keys underneath, swallowing
 taps on the lowest and highest notes on screen. `mask-image` on the scrolling
@@ -536,7 +575,7 @@ would need a native CoreMIDI bridge behind the same interface.
 
 ## What has and has not been tested
 
-**Verified:** 416 unit tests — among them pitch spelling across all 15 keys
+**Verified:** 428 unit tests — among them pitch spelling across all 15 keys
 and all 88 notes, MIDI parsing, the sustain pedal, the practice state
 machine and its chord window, PDF reading against real Sibelius and
 MuseScore exports, corrections, the device library, the training
@@ -547,7 +586,14 @@ as moments, and what is forgotten), and the keyboard's follow-the-keys rules
 (staying put when everything is in view or when nothing is being played,
 centring a key off either edge, keeping a hand-scrolled position, holding a
 guide and a played key together, preferring the guide when they cannot fit,
-and which end has more keyboard behind it).
+and which end has more keyboard behind it), and practising one hand (what a
+moment asks for, starting and seeking by way of that hand, walking past the
+moments only the other hand plays, playing a piece through with one hand,
+the other hand's notes passing uncounted while its own wrong notes still
+count, a note the other hand plays far away still counting as a mistake, the
+guides and a section's note count following the choice, the play-along cursor
+stopping only where that hand plays, and a unison between the staves
+belonging to both).
 End-to-end in headless Chromium: all three modes, PDF reading and
 correcting, the library across reloads, offline use through the service
 worker, playing training exercises through (including a simulated MIDI
@@ -571,7 +617,13 @@ nothing, the fade flips from one end to both to the other as the strip
 scrolls, a desktop-width window shows neither, the guides stay in view
 note by note through a MIDI score, a wrong note two octaves below does not
 pull the view off them, and the roll's bars still land on their keys to the
-pixel with the strip scrolled. The training sheet was checked with the real VexFlow.
+pixel with the strip scrolled. Practising one hand was checked in the
+browser on a real MIDI file and on a PDF: the guides drop to that hand's
+notes, the other staff greys back to the pixel colour counted off the drawn
+page (and back again when both hands are chosen), the band shrinks to the
+hand being practised, a clean pass of a repeated section is still counted
+clean with the left hand playing along, a wrong note of the practised hand is
+still counted, and the play-along cursor lights only that hand's keys. The training sheet was checked with the real VexFlow.
 
 **Not verified:** **OpenSheetMusicDisplay** (MusicXML engraving) has only run
 against a recording stub, not the real library, and the touch gestures have

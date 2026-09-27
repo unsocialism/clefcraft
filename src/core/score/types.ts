@@ -10,6 +10,12 @@
 
 export type Hand = 'right' | 'left';
 
+/**
+ * Which hand is being practised. `both` is the whole piece as written; the
+ * other two are one hand at a time, the way a passage is usually learnt.
+ */
+export type HandChoice = 'both' | Hand;
+
 export interface ScoreNote {
   readonly midi: number;
   /** 1 = topmost staff. Used to colour or filter by hand. */
@@ -57,11 +63,21 @@ export const EMPTY_SCORE: Score = {
   source: 'test',
 };
 
-/** The distinct MIDI numbers an event expects to be struck. */
-export function expectedNotes(event: ScoreEvent): Set<number> {
+/**
+ * The distinct MIDI numbers an event expects to be struck.
+ *
+ * With a hand chosen, only that hand's notes count — which is what makes
+ * practising one hand possible at all: an event the other hand alone plays
+ * comes back empty, and an empty event is one the cursor walks straight
+ * past. Unisons between the staves belong to both hands and survive either
+ * choice.
+ */
+export function expectedNotes(event: ScoreEvent, hands: HandChoice = 'both'): Set<number> {
   const notes = new Set<number>();
   for (const note of event.notes) {
-    if (!note.tiedFromPrevious) notes.add(note.midi);
+    if (note.tiedFromPrevious) continue;
+    if (hands !== 'both' && handOf(note) !== hands) continue;
+    notes.add(note.midi);
   }
   return notes;
 }
