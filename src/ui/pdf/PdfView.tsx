@@ -10,9 +10,48 @@ import PdfWorker from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 
 import type { EditedNote } from '../../core/pdf/edits.ts';
 import { readPdfNotes, type PdfNote, type PdfReadResult } from '../../core/pdf/pdfNotes.ts';
+import { rasterFromPixels } from '../../core/pdf/raster.ts';
 import { keepInView } from '../keepInView.ts';
 
 pdfjs.GlobalWorkerOptions.workerSrc = PdfWorker;
+
+/**
+ * Draw a page as pixels, for the reader to look at when the file turns out
+ * to be a scan.
+ *
+ * Rendered off screen at a resolution given in dots per inch — PDF points
+ * are seventy-two to the inch, so the scale follows from that — and capped,
+ * because a page of a large-format score at three hundred dots an inch is
+ * tens of millions of pixels and a phone will not thank you for it. The
+ * canvas is thrown away as soon as the pixels are read.
+ */
+type PdfDocument = Awaited<ReturnType<typeof pdfjs.getDocument>['promise']>;
+
+async function drawPage(doc: PdfDocument, pageNumber: number, dpi: number) {
+  const page = await doc.getPage(pageNumber);
+  const base = page.getViewport({ scale: 1 });
+  const wanted = dpi / 72;
+  // Three thousand six hundred on the long side is a little over three
+  // hundred dots an inch for a page of letter or A4 size, which is what
+  // sheet music is printed on.
+  const cap = 3600 / Math.max(base.width, base.height);
+  const viewport = page.getViewport({ scale: Math.min(wanted, cap) });
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(viewport.width);
+  canvas.height = Math.round(viewport.height);
+  const context = canvas.getContext('2d', { willReadFrequently: true });
+  if (!context) throw new Error('This browser would not give a canvas to read the scan with.');
+  // A PDF page has no background of its own, and unpainted paper arrives
+  // transparent — which the reader would otherwise have to guess about.
+  context.fillStyle = '#ffffff';
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  await page.render({ canvas, canvasContext: context, viewport }).promise;
+  const pixels = context.getImageData(0, 0, canvas.width, canvas.height);
+  const raster = rasterFromPixels(pixels.data, canvas.width, canvas.height);
+  canvas.width = 0;
+  canvas.height = 0;
+  return { raster, pageWidth: base.width, pageHeight: base.height };
+}
 
 export interface PdfViewProps {
   readonly data: ArrayBuffer | null;
@@ -110,7 +149,7 @@ export function PdfView({
   // expensive part and depends only on the file; re-reading it when the zoom
   // slider moves would hand the practice engine a brand-new score and throw
   // away your place in the piece.
-  type Doc = Awaited<ReturnType<typeof pdfjs.getDocument>['promise']>;
+  type Doc = PdfDocument;
   const [doc, setDoc] = useState<Doc | null>(null);
 
   useEffect(() => {
@@ -136,6 +175,7 @@ export function PdfView({
           OPS: pdfjs.OPS,
           numPages: opened.numPages,
           getPage: (n) => opened!.getPage(n),
+          renderPage: (n, dpi) => drawPage(opened!, n, dpi),
         });
         if (cancelled) return;
         setNotes(result.notes);

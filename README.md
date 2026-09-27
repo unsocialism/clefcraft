@@ -63,8 +63,62 @@ Measured on the two files it was built against: a MuseScore export read
 
 What it does not read is **rhythm**. The notes are in the right order and
 chords are grouped, but durations are unknown — so a PDF works in *wait for
-me* mode and not in *play along*. A scanned PDF has no glyphs at all and
-gets no guidance.
+me* mode and not in *play along*.
+
+### Reading a scanned PDF
+
+A scan is a photograph of a page. There are no glyphs and no coordinates in
+it, so when a PDF turns out to have none, the page is drawn as pixels at
+three hundred dots an inch and *looked at* instead
+(`core/pdf/raster.ts`, `core/pdf/scanInk.ts`). What comes out is written in
+exactly the form the drawn reader produces — staff-line rules, barline
+strokes, glyphs at positions — so everything downstream works on a scan
+without knowing it is one: the staves, the pitches, the page overlay, the
+corrections, the export.
+
+How it reads a page:
+
+- **The tilt comes out first.** A scan is never square, and a third of a
+  degree smears a staff line across three rows, which is enough to lose it.
+  The tilt is measured in bands down the page rather than once for the whole
+  of it, because a book is photographed open and the paper curves — on the
+  scan this was built against the top of the page is tilted by a different
+  amount from the bottom.
+- **Staff lines are the rows that run.** Not the rows with the most ink — a
+  bar of sixteenths has more — but the rows that reach from one end of the
+  system to the other. They are then gathered into fives, and a group that
+  is not five is dropped rather than guessed at.
+- **Noteheads are what a rectangle fits inside.** Filled heads are found by
+  opening the page with a rectangle a little smaller than a notehead: stems
+  are too narrow, beams, slurs and ledger lines too thin, and text too small,
+  so almost everything else disappears and the heads stay. A hollow head is
+  found as a piece of enclosed paper instead. Each head's height is then
+  measured again on the untouched ink, down a narrow band through its middle:
+  half a space of error there is a whole step of pitch.
+- **The key signature is settled by a vote.** A piece has one key signature
+  and repeats it on every line, so every line's reading is a ballot. Each is
+  read by matching the *positions* of the marks after the clef against the
+  fifteen standard signatures — a sharp and a natural differ by a few pixels
+  of slant at this size, while a sharp on the top line and a flat on the
+  middle line are four half-spaces apart and cannot be confused. The winner
+  is then written on to every staff, including the lines where the marks
+  themselves were lost in a slur.
+- **Clefs are told apart with a ruler.** A treble clef loops well below the
+  bottom line and a bass clef never leaves the top half, so counting the ink
+  under the staff separates them — no outlines to match, nothing to train.
+  Where the ink says nothing, a piano system is a treble staff over a bass
+  one, and that is used instead.
+
+**What to expect.** On the 300dpi scan it was built against — four pages,
+twenty systems — it found every staff, every clef, the right key signature,
+and about 670 noteheads, with nine in ten sitting within a third of a
+half-space of a staff position. It is not as exact as a score exported from
+notation software, and it never will be: *Mark what was read* and *Correct
+notes*, below, are how you check it. Reading takes a couple of seconds a
+page, so a long book is a wait.
+
+Rhythm is not read, exactly as for any other PDF. A very faint, very
+crooked or heavily marked-up scan may find no staves at all, and says so.
 
 **Checking and correcting the reading.** *Mark what was read* puts a marker
 on every notehead it found, coloured by hand; *Label pitches* adds the pitch
@@ -539,6 +593,23 @@ the cursor, the guides, the section counter, the play-along clock — already
 went through there, so they all learnt one hand at once, and a score still
 means the same thing to the library, the exporter and the page.
 
+**A scan needs the picture at the right size.** Rendering the page at 200
+dots an inch, which sounds like plenty, loses more than half the staff lines:
+the scan itself was made at about 300, and sampling it below that thins the
+lines until they are one faint pixel with gaps. Rendering higher than the
+scan was made costs time and adds nothing. Three hundred is where scans
+people actually have sit; if nothing is found there the page is drawn again
+at four hundred, for the finer scan.
+
+**On-grid beats near, but not from any distance.** Which staff a notehead
+belongs to is settled in the drawn reader by the grid: a notehead lands
+exactly on a line or a space of its own staff and between the lines of every
+other, so an on-grid staff used to win however far away it was. On a scan a
+height is right to a pixel or two, so a note can miss its own staff's grid
+and hit that of one three staves away by arithmetic alone — which put notes
+beside the bass staff three octaves below the treble. A staff two spaces
+further off now has to earn it.
+
 **The edge fade is a mask, not an overlay.** A gradient drawn over the ends of
 the keyboard strip would sit between you and the keys underneath, swallowing
 taps on the lowest and highest notes on screen. `mask-image` on the scrolling
@@ -575,7 +646,7 @@ would need a native CoreMIDI bridge behind the same interface.
 
 ## What has and has not been tested
 
-**Verified:** 428 unit tests — among them pitch spelling across all 15 keys
+**Verified:** 466 unit tests — among them pitch spelling across all 15 keys
 and all 88 notes, MIDI parsing, the sustain pedal, the practice state
 machine and its chord window, PDF reading against real Sibelius and
 MuseScore exports, corrections, the device library, the training
@@ -593,7 +664,14 @@ the other hand's notes passing uncounted while its own wrong notes still
 count, a note the other hand plays far away still counting as a mistake, the
 guides and a section's note count following the choice, the play-along cursor
 stopping only where that hand plays, and a unison between the staves
-belonging to both).
+belonging to both), and reading a scan (ink from pixels, measuring and
+taking out a tilt including one that varies down the page, finding staff
+lines and refusing a group that is not five, erasing the lines without
+cutting the symbols, keeping only shapes of a notehead's size, finding
+blobs and enclosed holes, stems and column slices, reading each of the
+fifteen key signatures by position and refusing a stray mark, telling the
+clefs apart, and reading a whole drawn page back as the pitches it was
+drawn with).
 End-to-end in headless Chromium: all three modes, PDF reading and
 correcting, the library across reloads, offline use through the service
 worker, playing training exercises through (including a simulated MIDI
@@ -624,6 +702,16 @@ page (and back again when both hands are chosen), the band shrinks to the
 hand being practised, a clean pass of a repeated section is still counted
 clean with the left hand playing along, a wrong note of the practised hand is
 still counted, and the play-along cursor lights only that hand's keys. The training sheet was checked with the real VexFlow.
+
+Reading scans was checked against a real one: a four-page 300dpi scan of a
+published piano arrangement, tilted by half a degree and assembled from two
+exposures a page. All forty staves and every clef were found, the key
+signature was read unanimously, about 670 noteheads came out with a median
+position error of a fifteenth of a half-space, the first system's pitches
+were checked note by note against the page, and the whole of it went through
+the app end to end — read in eight seconds, practised through with the
+keyboard guides, one hand at a time, and opened in *Correct notes* with a
+marker on every note found.
 
 **Not verified:** **OpenSheetMusicDisplay** (MusicXML engraving) has only run
 against a recording stub, not the real library, and the touch gestures have

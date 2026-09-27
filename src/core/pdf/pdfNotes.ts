@@ -22,6 +22,8 @@ import {
   type Rule,
   type Stroke,
 } from './glyphs.ts';
+import { analysePage, documentKey, inkFrom, type PageAnalysis } from './scanInk.ts';
+import type { Raster } from './raster.ts';
 import {
   bottomY,
   clefAt,
@@ -384,6 +386,8 @@ export function findSystems(
  * off-grid one however far away it is, and distance only breaks ties
  * between staves that are both on-grid.
  */
+const ON_GRID_ALLOWANCE = 4;
+
 export function chooseStaff(x: number, y: number, staves: readonly Staff[]): Staff | null {
   let best: Staff | null = null;
   let bestSteps = Infinity;
@@ -397,7 +401,19 @@ export function chooseStaff(x: number, y: number, staves: readonly Staff[]): Sta
     if (steps > 24) continue;
 
     const onGrid = positionError(y, staff) <= 0.25;
-    const better = onGrid === bestOnGrid ? steps < bestSteps : onGrid;
+    // On-grid wins, but not from any distance. That rule was written for a
+    // drawn score, where a notehead's height is exact and landing on a
+    // staff's grid really does mean it belongs there. On a scan a height is
+    // right to a pixel or two, so a note can miss its own staff's grid and
+    // hit that of one three staves away purely by arithmetic — and a note
+    // beside the bass staff comes back three octaves below the treble. A
+    // staff two spaces further off has to earn it.
+    const better =
+      onGrid === bestOnGrid
+        ? steps < bestSteps
+        : onGrid
+          ? steps <= bestSteps + ON_GRID_ALLOWANCE
+          : steps + ON_GRID_ALLOWANCE < bestSteps;
     if (better) {
       bestSteps = steps;
       bestOnGrid = onGrid;
@@ -439,12 +455,97 @@ export interface ReadPdfOptions {
   readonly OPS: PdfOps;
   readonly numPages: number;
   getPage(pageNumber: number): Promise<PageLike>;
+  /**
+   * Draw a page as pixels, for a PDF that turns out to be a scan.
+   *
+   * Optional, and left out by anything that has no canvas to draw on — the
+   * tests, for one. Without it a scan reads as it always did: nothing found,
+   * and a warning saying why.
+   */
+  renderPage?(pageNumber: number, dpi: number): Promise<RenderedPage>;
+}
+
+/** A page drawn as pixels, with the size it stands for in PDF points. */
+export interface RenderedPage {
+  readonly raster: Raster;
+  readonly pageWidth: number;
+  readonly pageHeight: number;
+}
+
+/**
+ * Where the ink for every page came from.
+ *
+ * A drawn PDF is read from what it says it drew. A scan has to be looked at
+ * instead, and looked at as a whole: the key signature is settled by a vote
+ * across every staff of every page, so the pages are all examined before any
+ * of them is turned into ink.
+ */
+async function inkOfEveryPage(
+  doc: ReadPdfOptions,
+): Promise<{ inks: PageInk[]; scanned: boolean; warnings: string[] }> {
+  const warnings: string[] = [];
+  const inks: PageInk[] = [];
+  for (let page = 1; page <= doc.numPages; page++) {
+    inks.push(await readPageInk(await doc.getPage(page), doc.OPS));
+  }
+  const drawn = chooseFontProfile(inks.flatMap((ink) => ink.glyphs));
+  if (drawn.noteheads > 0) return { inks, scanned: false, warnings };
+
+  if (!doc.renderPage) {
+    warnings.push(
+      'No noteheads recognised. This PDF is probably a scan, or uses a music font ' +
+        'that is neither SMuFL nor Sibelius Opus.',
+    );
+    return { inks, scanned: false, warnings };
+  }
+
+  // A scan. Rendered at three hundred dots an inch, which is where the scans
+  // people actually have sit: below it the staff lines thin out until they
+  // cannot be found, and above it the reading takes longer for a picture
+  // that holds no more than the scanner captured. If nothing at all is found
+  // the page is drawn again larger, for the scan that was made finer than
+  // this and loses its lines to the sampling.
+  const analyses: PageAnalysis[] = [];
+  for (let page = 1; page <= doc.numPages; page++) {
+    let rendered = await doc.renderPage(page, 300);
+    let analysis = analysePage(rendered.raster, {
+      pageWidth: rendered.pageWidth,
+      pageHeight: rendered.pageHeight,
+    });
+    if (analysis.report.staves === 0) {
+      rendered = await doc.renderPage(page, 400);
+      analysis = analysePage(rendered.raster, {
+        pageWidth: rendered.pageWidth,
+        pageHeight: rendered.pageHeight,
+      });
+    }
+    analyses.push(analysis);
+  }
+  const key = documentKey(analyses);
+  const results = analyses.map((analysis) => inkFrom(analysis, key));
+  const staves = results.reduce((sum, result) => sum + result.report.staves, 0);
+  if (staves === 0) {
+    warnings.push(
+      'This PDF is a scan, and no staves could be found on it. A clearer or ' +
+        'straighter scan may read better.',
+    );
+  } else {
+    const skew = Math.max(...analyses.map((a) => Math.abs(a.report.skewDegrees)));
+    warnings.push(
+      `Read as a scan: the notes were found by looking at the page, not by reading the ` +
+        `file. Pitches are read from the staff; rhythm is not read from a PDF at all. ` +
+        `Check it against the page and correct what is wrong.` +
+        (skew > 0.15 ? ` The scan was tilted by up to ${skew.toFixed(1)}°, which was taken out.` : ''),
+    );
+  }
+  return { inks: results.map((result) => result.ink), scanned: true, warnings };
 }
 
 export async function readPdfNotes(doc: ReadPdfOptions): Promise<PdfReadResult> {
   const notes: PdfNote[] = [];
   const layouts: PdfPageLayout[] = [];
-  const warnings: string[] = [];
+  const source = await inkOfEveryPage(doc);
+  const warnings: string[] = [...source.warnings];
   let profile = FONT_PROFILES[0]!;
   let totalStaves = 0;
   let totalSystems = 0;
@@ -455,17 +556,8 @@ export async function readPdfNotes(doc: ReadPdfOptions): Promise<PdfReadResult> 
   let measureBase = 0;
 
   for (let page = 1; page <= doc.numPages; page++) {
-    const ink: PageInk = await readPageInk(await doc.getPage(page), doc.OPS);
-    if (page === 1) {
-      const chosen = chooseFontProfile(ink.glyphs);
-      profile = chosen.profile;
-      if (chosen.noteheads === 0) {
-        warnings.push(
-          'No noteheads recognised. This PDF is probably a scan, or uses a music font ' +
-            'that is neither SMuFL nor Sibelius Opus.',
-        );
-      }
-    }
+    const ink: PageInk = source.inks[page - 1] ?? { rules: [], segments: [], strokes: [], glyphs: [] };
+    if (page === 1) profile = chooseFontProfile(ink.glyphs).profile;
 
     const staves = widenStaves(groupStaffLines(ink.rules as Rule[]), ink.segments);
     totalStaves += staves.length;
@@ -596,7 +688,7 @@ export async function readPdfNotes(doc: ReadPdfOptions): Promise<PdfReadResult> 
     notes,
     pages: layouts,
     diagnostics: {
-      fontProfile: profile.name,
+      fontProfile: source.scanned ? 'scan' : profile.name,
       pages: doc.numPages,
       staves: totalStaves,
       systems: totalSystems,
