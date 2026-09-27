@@ -121,8 +121,15 @@ Rhythm is not read, exactly as for any other PDF. A very faint, very
 crooked or heavily marked-up scan may find no staves at all, and says so.
 
 **Checking and correcting the reading.** *Mark what was read* puts a marker
-on every notehead it found, coloured by hand; *Label pitches* adds the pitch
-it read. A wrong note is obvious at a glance. *Correct notes* lets you:
+on every notehead it found, coloured by hand, and writes above each staff
+the clef and key signature it used there — "treble · G major (1♯)". That is
+the one thing a reading can get wrong that the markers themselves cannot
+show: every note on a staff read with the wrong clef is out by a sixth, and
+every F on a staff read without its sharp is out by a semitone, and in both
+cases the markers sit neatly where they belong. A clef or key that changes
+part-way along the line is written as a chain, "treble→bass". *Label
+pitches* adds the pitch read at each notehead, so a wrong note is obvious at
+a glance. *Correct notes* lets you:
 
 - tap a marker to move it a semitone or an octave, switch its hand, or delete it
   (on a keyboard: ↑↓, Shift+↑↓, H, Delete, Esc);
@@ -601,6 +608,17 @@ scan was made costs time and adds nothing. Three hundred is where scans
 people actually have sit; if nothing is found there the page is drawn again
 at four hundred, for the finer scan.
 
+**A staff never has a key of its own.** Both staves of a grand staff carry
+the same key signature — that is not a convention an engraver may depart
+from — so a staff that reads no sharps and no flats while the staff beside
+it reads three has not found a key, it has missed one, and every note on
+that line then comes out a semitone wrong with nothing on the page to say
+so. Such a staff takes its neighbour's key. Two staves that read two
+*different* keys are left alone: keys change from one system to the next,
+and that is a disagreement worth seeing rather than one to paper over. A
+cancellation to C major is written as naturals on both staves, so it sums to
+nothing on both and neither is touched.
+
 **On-grid beats near, but not from any distance.** Which staff a notehead
 belongs to is settled in the drawn reader by the grid: a notehead lands
 exactly on a line or a space of its own staff and between the lines of every
@@ -646,7 +664,7 @@ would need a native CoreMIDI bridge behind the same interface.
 
 ## What has and has not been tested
 
-**Verified:** 466 unit tests — among them pitch spelling across all 15 keys
+**Verified:** 471 unit tests — among them pitch spelling across all 15 keys
 and all 88 notes, MIDI parsing, the sustain pedal, the practice state
 machine and its chord window, PDF reading against real Sibelius and
 MuseScore exports, corrections, the device library, the training
@@ -671,7 +689,10 @@ cutting the symbols, keeping only shapes of a notehead's size, finding
 blobs and enclosed holes, stems and column slices, reading each of the
 fifteen key signatures by position and refusing a stray mark, telling the
 clefs apart, and reading a whole drawn page back as the pitches it was
-drawn with).
+drawn with), and a staff taking its neighbour's key signature when it read
+none of its own (including when what it read was a lone natural, but not
+when it read a different key, not from a staff a system away, and not on a
+piece that really is in C major).
 End-to-end in headless Chromium: all three modes, PDF reading and
 correcting, the library across reloads, offline use through the service
 worker, playing training exercises through (including a simulated MIDI

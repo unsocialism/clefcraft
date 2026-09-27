@@ -550,9 +550,21 @@ export function inkFrom(analysis: PageAnalysis, fifths: number | null): ScanResu
     if (fifths !== null && fifths !== 0) {
       const order = fifths > 0 ? SHARP_ORDER[clef.kind] : FLAT_ORDER[clef.kind];
       const count = Math.min(7, Math.abs(fifths));
-      const start = entry.keyFrom ?? clef.end;
+      // Between the clef and the first note, and never far along the staff:
+      // the reader that picks these up again only looks in the space a key
+      // signature is actually written in, so a mark found late — a stray
+      // blot taken for the first of the row — must not drag the whole
+      // signature out of that space and lose it.
+      const start = Math.min(
+        Math.max(entry.keyFrom ?? clef.end, clef.end),
+        staff.x0 + spacing * 8,
+      );
       for (let i = 0; i < count; i++) {
-        const x = Math.min(start + i * spacing * 1.15, firstHead - spacing * 0.8);
+        const x = Math.min(
+          start + i * spacing * 1.15,
+          firstHead - spacing * 0.8,
+          staff.x0 + spacing * 13,
+        );
         keyAccidentals++;
         glyphs.push({
           ch: fifths > 0 ? ACCIDENTAL.sharp : ACCIDENTAL.flat,

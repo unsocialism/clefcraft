@@ -313,6 +313,60 @@ export function keyChangesOn(
 }
 
 /**
+ * Give a staff that read no key signature the one its neighbour read.
+ *
+ * The two staves of a grand staff always carry the same key signature —
+ * that is not a convention an engraver may depart from — so a staff that
+ * comes back with nothing while the staff just above or below it came back
+ * with three sharps has not found a key of its own, it has missed one. Left
+ * alone, every note on that line is read a semitone out, and nothing on the
+ * page says so.
+ *
+ * The test is on the number of sharps or flats, not on whether anything was
+ * found: a staff whose "key signature" came back as a single natural sums to
+ * none either, and is the same miss wearing a different hat. A cancellation
+ * to C major really is written as naturals, but it is written that way on
+ * both staves of the system, so both sum to none and neither is touched.
+ *
+ * Only a staff that read no sharps and no flats is filled in, and only from
+ * a staff close enough to be its partner. Two staves that read two different
+ * keys are left exactly as they were: keys change between one system and the
+ * next, and that is a disagreement worth seeing rather than one to paper
+ * over.
+ */
+export function shareKeysWithNeighbours(
+  staves: readonly Staff[],
+  keyOf: Map<Staff, Map<WrittenPitch['step'], -1 | 0 | 1>>,
+): void {
+  const middleOf = (staff: Staff) => (topY(staff) + bottomY(staff)) / 2;
+  const fifthsOf = (key: ReadonlyMap<WrittenPitch['step'], -1 | 0 | 1>) => {
+    let total = 0;
+    for (const alter of key.values()) total += alter;
+    return total;
+  };
+  for (const staff of staves) {
+    const key = keyOf.get(staff);
+    if (!key || fifthsOf(key) !== 0) continue;
+    // Within three staves' height: the other half of a grand staff, and not
+    // the next system down.
+    const reach = staff.spacing * 12;
+    let best: Staff | null = null;
+    let nearest = Infinity;
+    for (const other of staves) {
+      if (other === staff) continue;
+      const found = keyOf.get(other);
+      if (!found || fifthsOf(found) === 0) continue;
+      const away = Math.abs(middleOf(other) - middleOf(staff));
+      if (away < nearest && away <= reach) {
+        nearest = away;
+        best = other;
+      }
+    }
+    if (best) keyOf.set(staff, new Map(keyOf.get(best)!));
+  }
+}
+
+/**
  * Barlines, and the systems they define.
  *
  * Systems are taken from the barlines rather than from the gaps between
@@ -569,6 +623,7 @@ export async function readPdfNotes(doc: ReadPdfOptions): Promise<PdfReadResult> 
     const keyOf = new Map(
       staves.map((s) => [s, keySignatureOn(s, ink.glyphs, profile, clefsOf.get(s)!)]),
     );
+    shareKeysWithNeighbours(staves, keyOf);
     const keyChangesOf = new Map(
       staves.map((s) => [
         s,

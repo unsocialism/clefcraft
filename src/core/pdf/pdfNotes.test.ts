@@ -1,7 +1,13 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { chooseFontProfile, chooseStaff, FONT_PROFILES, keyChangesOn } from './pdfNotes.ts';
+import {
+  chooseFontProfile,
+  chooseStaff,
+  FONT_PROFILES,
+  keyChangesOn,
+  shareKeysWithNeighbours,
+} from './pdfNotes.ts';
 import type { Glyph } from './glyphs.ts';
 import type { Staff } from './staffGeometry.ts';
 
@@ -124,5 +130,69 @@ describe('key changes part-way along a staff', () => {
   it('leaves the opening key signature of the line to keySignatureOn', () => {
     const glyphs = [g(FLAT, 60, at(4)), g(HEAD, 90, at(2))];
     assert.deepEqual(keyChangesOn(staff, glyphs, MSCORE, clefs, [46, 559]), []);
+  });
+});
+
+describe('a staff that missed its key signature', () => {
+  type Key = Map<'C' | 'D' | 'E' | 'F' | 'G' | 'A' | 'B', -1 | 0 | 1>;
+  const sharps = (): Key => new Map([['F', 1] as const, ['C', 1] as const]);
+
+  it('takes the key its partner in the grand staff read', () => {
+    const treble = staffFrom(700);
+    const bass = staffFrom(650);
+    const keys = new Map([
+      [treble, sharps()],
+      [bass, new Map() as Key],
+    ]);
+    shareKeysWithNeighbours([treble, bass], keys);
+    assert.deepEqual([...keys.get(bass)!], [...sharps()]);
+  });
+
+  it('counts a lone natural as having missed it too', () => {
+    // A key signature read as one natural sums to no sharps and no flats,
+    // which is the same miss wearing a different hat.
+    const treble = staffFrom(700);
+    const bass = staffFrom(650);
+    const keys = new Map([
+      [treble, sharps()],
+      [bass, new Map([['B', 0]]) as Key],
+    ]);
+    shareKeysWithNeighbours([treble, bass], keys);
+    assert.deepEqual([...keys.get(bass)!], [...sharps()]);
+  });
+
+  it('leaves a staff that read a different key alone', () => {
+    const treble = staffFrom(700);
+    const bass = staffFrom(650);
+    const flats = new Map([['B', -1]]) as Key;
+    const keys = new Map([
+      [treble, sharps()],
+      [bass, flats],
+    ]);
+    shareKeysWithNeighbours([treble, bass], keys);
+    assert.deepEqual([...keys.get(bass)!], [...flats], 'a disagreement is worth seeing');
+  });
+
+  it('does not reach into the next system down', () => {
+    const treble = staffFrom(700);
+    const faraway = staffFrom(200);
+    const keys = new Map([
+      [treble, sharps()],
+      [faraway, new Map() as Key],
+    ]);
+    shareKeysWithNeighbours([treble, faraway], keys);
+    assert.equal(keys.get(faraway)!.size, 0);
+  });
+
+  it('leaves a piece genuinely in C major in C major', () => {
+    const treble = staffFrom(700);
+    const bass = staffFrom(650);
+    const keys = new Map([
+      [treble, new Map() as Key],
+      [bass, new Map() as Key],
+    ]);
+    shareKeysWithNeighbours([treble, bass], keys);
+    assert.equal(keys.get(treble)!.size, 0);
+    assert.equal(keys.get(bass)!.size, 0);
   });
 });

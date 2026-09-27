@@ -9,7 +9,13 @@ import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
 import PdfWorker from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 
 import type { EditedNote } from '../../core/pdf/edits.ts';
-import { readPdfNotes, type PdfNote, type PdfReadResult } from '../../core/pdf/pdfNotes.ts';
+import {
+  readPdfNotes,
+  type PdfNote,
+  type PdfPageLayout,
+  type PdfReadResult,
+} from '../../core/pdf/pdfNotes.ts';
+import { keySignatureByFifths } from '../../core/music/keySignature.ts';
 import { rasterFromPixels } from '../../core/pdf/raster.ts';
 import { keepInView } from '../keepInView.ts';
 
@@ -51,6 +57,43 @@ async function drawPage(doc: PdfDocument, pageNumber: number, dpi: number) {
   canvas.width = 0;
   canvas.height = 0;
   return { raster, pageWidth: base.width, pageHeight: base.height };
+}
+
+/**
+ * What the reader made of a staff, in a few words.
+ *
+ * The one thing a reading can get wrong that is invisible in the notes
+ * themselves: every pitch on a staff read with the wrong clef is out by a
+ * sixth, and every F on a staff read without its sharp is out by a semitone
+ * — and in both cases the marks all sit neatly on the page where they
+ * belong. Saying which clef and which key were used puts the assumption in
+ * front of you, where a glance settles it.
+ */
+function staffLabel(info: PdfPageLayout['staffInfo'][number]): string {
+  const clefs = runOf(info.clefs.map((change) => change.clef));
+  const keys = runOf([
+    keyName(info.keyFifths),
+    ...(info.keyChanges ?? []).map((change) => keyName(change.fifths)),
+  ]);
+  return `${clefs.length > 0 ? clefs.join('→') : 'no clef'} · ${keys.join('→')}`;
+}
+
+/** A key signature as a name and the marks that write it. */
+function keyName(fifths: number): string {
+  const key = keySignatureByFifths(fifths);
+  if (fifths === 0) return key.name;
+  return `${key.name} (${Math.abs(fifths)}${fifths > 0 ? '♯' : '♭'})`;
+}
+
+/**
+ * The sequence with anything repeated straight after itself dropped, and
+ * cut short if it runs on. A staff that goes treble, treble, bass has
+ * changed clef once, not twice, and saying so twice reads as an error.
+ */
+function runOf(values: readonly string[]): string[] {
+  const kept: string[] = [];
+  for (const value of values) if (value !== kept[kept.length - 1]) kept.push(value);
+  return kept.length > 3 ? [...kept.slice(0, 3), '…'] : kept;
 }
 
 export interface PdfViewProps {
@@ -134,6 +177,9 @@ export function PdfView({
 }: PdfViewProps) {
   const [boxes, setBoxes] = useState<readonly PageBox[]>([]);
   const [readNotes, setNotes] = useState<readonly PdfNote[]>([]);
+  // Kept as well as handed on, because the overlay draws from it: which clef
+  // and key were read on each staff is part of "what was read".
+  const [layouts, setLayouts] = useState<readonly PdfPageLayout[]>([]);
   const [rendering, setRendering] = useState(false);
   const [reading, setReading] = useState(false);
   const canvasRefs = useRef(new Map<number, HTMLCanvasElement>());
@@ -157,6 +203,7 @@ export function PdfView({
       setDoc(null);
       setBoxes([]);
       setNotes([]);
+      setLayouts([]);
       return;
     }
     let cancelled = false;
@@ -179,6 +226,7 @@ export function PdfView({
         });
         if (cancelled) return;
         setNotes(result.notes);
+        setLayouts(result.pages);
         onReadRef.current(result);
       } catch (cause) {
         if (!cancelled) onErrorRef.current(cause instanceof Error ? cause.message : String(cause));
@@ -416,6 +464,35 @@ export function PdfView({
                       </g>
                     );
                   })}
+                {(showOverlay || editing) &&
+                  (layouts.find((layout) => layout.page === box.pageNumber)?.staffInfo ?? []).map(
+                    (info, index) => {
+                      // Four spaces above the staff's own top line, at the
+                      // end the clef is drawn on: beside the thing it
+                      // describes, and clear of the three ledger lines a
+                      // right hand reaches on an ordinary page. On its own
+                      // chip, because there are directions and slurs up
+                      // there too and a bare word among them reads as part
+                      // of the music.
+                      const [x, y] = box.toOverlay(
+                        info.staff.x0,
+                        info.staff.lineYs[0]! + info.staff.spacing * 4,
+                      );
+                      const text = staffLabel(info);
+                      // Measured by the ruler of the font size, since SVG
+                      // cannot be asked before it is drawn. A little wide is
+                      // better than a chip its text hangs out of.
+                      const width = text.length * 3.9 + 8;
+                      return (
+                        <g key={`staff-${index}`} className="pdf-staff-label">
+                          <rect x={x - 3} y={y - 7.5} width={width} height={10} rx={3} />
+                          <text x={x} y={y}>
+                            {text}
+                          </text>
+                        </g>
+                      );
+                    },
+                  )}
                 {(highlightByPage.get(box.pageNumber) ?? []).map((spot, index) =>
                   spot.ys.map((sy, j) => {
                     const [x, y] = box.toOverlay(spot.x, sy);

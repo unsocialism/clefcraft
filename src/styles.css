@@ -1628,3 +1628,19 @@ body {
     transparent 100%
   );
 }
+
+/* What the reader made of a staff, written above it. Small, because it is a
+   note in the margin of somebody else's page, and haloed, because the page
+   underneath is black on white and so is everything else. */
+.pdf-staff-label text {
+  font-size: 7px;
+  font-weight: 600;
+  fill: var(--accent, #2f6df6);
+  letter-spacing: 0.02em;
+}
+
+.pdf-staff-label rect {
+  fill: rgba(255, 253, 247, 0.92);
+  stroke: rgba(47, 109, 246, 0.35);
+  stroke-width: 0.4px;
+}
