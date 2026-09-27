@@ -139,6 +139,21 @@ a glance. *Correct notes* lets you:
 Corrections are stored as changes to the reading, not as an edited copy, and
 are saved as you make them.
 
+**A correction stays on the notehead it corrects.** Changing a note's pitch
+does not move its marker up or down the staff, and deliberately: the marker
+points at ink on the page, and the notehead the reader misread is still
+printed exactly where it is. Moved to where the corrected pitch would be
+written, the marker would hover over blank paper — or over a different
+printed note — and you would lose track of which one you had fixed. Nothing
+but the display depends on that height, so the pitch you set is the pitch
+practice waits for and the pitch the export writes.
+
+What does change is the marker: a corrected or added note is tinted violet
+(dashed if you added it) and carries its new pitch whether *Label pitches*
+is on or not. Every other marker can be checked against the page underneath
+it; this one cannot, because it no longer agrees with what is printed there,
+which is the whole point of it.
+
 **Taking the notes out.** *Save MIDI* and *Save MusicXML* write the reading,
 corrections included, to a file. Rhythm is not read from a PDF, so every
 event becomes one quarter note and a measure lasts as many quarters as it

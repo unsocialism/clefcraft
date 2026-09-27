@@ -622,6 +622,19 @@ body {
   stroke-dasharray: 1.6 1.1;
 }
 
+/* A corrected note carries its pitch whether the labels are on or not, so
+   the label has to hold its own over printed music rather than over the
+   clean gaps the labels normally sit in. Violet like the marker, and haloed
+   in the paper's own colour. */
+.pdf-mark--changed text,
+.pdf-mark--added text {
+  fill: rgb(109 40 217);
+  stroke: #fffdf7;
+  stroke-width: 1.2px;
+  paint-order: stroke fill;
+  opacity: 1;
+}
+
 .pdf-mark--selected circle {
   stroke-width: 1.9;
   opacity: 1;

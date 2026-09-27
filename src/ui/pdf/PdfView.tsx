@@ -452,12 +452,19 @@ export function PdfView({
                             pixels across, and on a phone a finger is not. */}
                         {editing && <circle cx={x} cy={y} r={6.5} className="pdf-mark__hit" />}
                         <circle cx={x} cy={y} r={3.4} />
-                        {(showPitches || isSelected) && (
+                        {(showPitches || isSelected || note.edit !== 'read') && (
                           <text x={x} y={y - 5}>
                             {/* The spelling as engraved, not one re-derived
                                 from the MIDI number: the page says F♯, and
                                 showing G♭ beside it would look like an error
-                                in the reader when it is not. */}
+                                in the reader when it is not.
+
+                                A note you corrected or added says so whether
+                                the labels are on or not. Every other marker
+                                can be checked against the page under it;
+                                this one cannot, because it no longer agrees
+                                with what is printed there — and that is the
+                                whole point of it. */}
                             {pitchLabel(note.pitch)}
                           </text>
                         )}
