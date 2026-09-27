@@ -37,17 +37,20 @@ export const TRAIL_MS = 12_000;
 const MOST_NOTES = 400;
 /**
  * However old they are, this many notes are always kept. The roll shows the
- * last few seconds, but the staff shows the last few *moments* — and a
- * phrase played, then thought about for half a minute, should still be on
- * the staff when you come back to it.
+ * last few seconds, but the staff shows the last few *lines* — four bars of
+ * four beats, four times over, and every note of a chord — and a phrase
+ * played, then thought about for half a minute, should still be on the page
+ * when you come back to it.
  */
-const ALWAYS_KEPT = 32;
+const ALWAYS_KEPT = 200;
 /** Notes struck within this of each other are one moment on the staff. */
 export const MOMENT_MS = 70;
 
 export interface TrailOptions {
   readonly keepMs?: number;
   readonly mostNotes?: number;
+  /** However old they are, this many notes are kept. See `ALWAYS_KEPT`. */
+  readonly alwaysKeep?: number;
 }
 
 /** Fold one event in, dropping whatever has scrolled out of sight. */
@@ -57,9 +60,9 @@ export function trailEvent(
   at: number,
   options: TrailOptions = {},
 ): TrailState {
-  const { keepMs = TRAIL_MS, mostNotes = MOST_NOTES } = options;
+  const { keepMs = TRAIL_MS, mostNotes = MOST_NOTES, alwaysKeep = ALWAYS_KEPT } = options;
   const forget = (notes: readonly LiveNote[]): LiveNote[] => {
-    const recent = Math.max(0, notes.length - ALWAYS_KEPT);
+    const recent = Math.max(0, notes.length - alwaysKeep);
     const kept = notes.filter(
       (note, index) => index >= recent || note.endMs === null || note.endMs > at - keepMs,
     );

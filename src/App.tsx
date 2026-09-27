@@ -27,10 +27,10 @@ import type { PdfReadResult } from './core/pdf/pdfNotes.ts';
 import { usePianoInput, type EventOrigin } from './hooks/usePianoInput.ts';
 import { useImmersive } from './hooks/useImmersive.ts';
 import { DEFAULT_METER, usePractice } from './hooks/usePractice.ts';
-import { TRAIL_MOMENTS, useLiveTrail } from './hooks/useLiveTrail.ts';
+import { useLiveTrail } from './hooks/useLiveTrail.ts';
 import { useRecorder } from './hooks/useRecorder.ts';
 import { useTraining } from './hooks/useTraining.ts';
-import { GrandStaff } from './ui/GrandStaff.tsx';
+import { LiveSheet } from './ui/free/LiveSheet.tsx';
 import { NoteReadout } from './ui/NoteReadout.tsx';
 import { PianoKeyboard, type KeyGuide } from './ui/PianoKeyboard.tsx';
 import { PianoRoll } from './ui/PianoRoll.tsx';
@@ -910,13 +910,7 @@ export function App() {
       <main className="app__main" ref={mainRef}>
         {appMode === 'free' ? (
           <>
-            <GrandStaff
-              notes={piano.notes}
-              fifths={fifths}
-              accidentals={accidentals}
-              trail={trail.moments}
-              slots={TRAIL_MOMENTS}
-            />
+            <LiveSheet moments={trail.moments} fifths={fifths} accidentals={accidentals} />
             {/* The take, written out. Below the live staff, because it is
                 what you played rather than what you are playing. */}
             {recorder.take && (

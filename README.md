@@ -192,14 +192,33 @@ tabs, and in Practice and Training it says whether the note was the one asked
 for. Each tab starts with a clear strip — what you played in another one is not
 what you are playing here.
 
-**A running staff** (free play). It keeps the last eight moments rather than
-only what is under your fingers: the newest in blue at the right, the ones before it
-fading back, so a phrase can be read after it has been played. A chord is one
-moment, not three notes — the few milliseconds between the keys of a chord are
-not three separate events. The moments sit in fixed slots and the whole staff
-slides one slot left as a new one arrives, because notes finding new positions
-on every keypress is unreadable. There is no rhythm in it: each moment is one
-note, however long you held it.
+**A written sheet** (free play). What you play is written out as a page of
+music: four bars to a line, filling from the left, a new line when the last one
+is full. It was a row of slots filled from the right, with the whole staff
+marching sideways as each note arrived; that read like a ticker tape, and it is
+not what music looks like.
+
+The thing it guarantees is that **nothing already written ever moves**. Notes
+land on a grid decided before you play — a bar of nothing is formatted first
+and the real notes are placed where its four beats fell — so a note that gains
+a ledger line or an accidental does not push its neighbours along. When the
+page is full a whole line leaves the top rather than a note at a time, so it
+turns once every sixteen notes instead of shuffling upward constantly. The note
+just played is blue, to show where the writing has got to.
+
+A chord is one moment, not three notes — the few milliseconds between the keys
+of a chord are not three separate events. There is **no rhythm** in it: every
+press takes the next beat, whatever you held. Free play is played to no clock,
+and a rhythm guessed from it would have to be re-guessed, and the page
+re-written under your hands, with every note you added; the roll below shows
+how long each key was down. What the sheet shows is which notes they were.
+
+How many lines it writes depends on the room it has: four on a tall window,
+one on a phone. Under about 560 pixels of width it writes two bars to a line
+instead of four, the way music printed for a small page does — sixteen places
+for a note across a phone leaves twenty pixels each, which is less than a chord
+with an accidental needs. On a screen too short for even one system it draws
+the sheet whole and scales it down rather than cutting the bass staff off.
 
 **A piano roll** (every tab). Above the keys, each note appears the moment it
 is struck, grows while you hold it, and drifts up and out — the half the staff cannot tell
@@ -679,7 +698,7 @@ would need a native CoreMIDI bridge behind the same interface.
 
 ## What has and has not been tested
 
-**Verified:** 471 unit tests — among them pitch spelling across all 15 keys
+**Verified:** 482 unit tests — among them pitch spelling across all 15 keys
 and all 88 notes, MIDI parsing, the sustain pedal, the practice state
 machine and its chord window, PDF reading against real Sibelius and
 MuseScore exports, corrections, the device library, the training
@@ -704,8 +723,12 @@ cutting the symbols, keeping only shapes of a notehead's size, finding
 blobs and enclosed holes, stems and column slices, reading each of the
 fifteen key signatures by position and refusing a stray mark, telling the
 clefs apart, and reading a whole drawn page back as the pitches it was
-drawn with), and a staff taking its neighbour's key signature when it read
-none of its own (including when what it read was a lone natural, but not
+drawn with), the free-play sheet (each press taking the next slot, a
+chord growing in the slot it already has, a note never moving once written,
+the oldest forgotten when the page is full, a line turning whole, a cleared
+trail starting a fresh sheet, and a page laid out into fewer lines when there
+is room for fewer), and a staff taking its neighbour's key signature when it
+read none of its own (including when what it read was a lone natural, but not
 when it read a different key, not from a staff a system away, and not on a
 piece that really is in C major).
 End-to-end in headless Chromium: all three modes, PDF reading and
@@ -731,7 +754,11 @@ nothing, the fade flips from one end to both to the other as the strip
 scrolls, a desktop-width window shows neither, the guides stay in view
 note by note through a MIDI score, a wrong note two octaves below does not
 pull the view off them, and the roll's bars still land on their keys to the
-pixel with the strip scrolled. Practising one hand was checked in the
+pixel with the strip scrolled. The written sheet was checked in the browser at
+four window sizes: it fills its panel exactly and nothing hangs over the edge
+at any of them, notes land left to right and every one of them stays at the
+pixel it was written at as more arrive, a chord comes out as one stack, and
+leaving free play and coming back starts a fresh page. Practising one hand was checked in the
 browser on a real MIDI file and on a PDF: the guides drop to that hand's
 notes, the other staff greys back to the pixel colour counted off the drawn
 page (and back again when both hands are chosen), the band shrinks to the

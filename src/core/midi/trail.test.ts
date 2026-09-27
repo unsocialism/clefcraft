@@ -55,14 +55,16 @@ describe('the live trail', () => {
   });
 
   it('forgets what has scrolled out of sight, but never what is still held', () => {
-    // Forty notes, so the oldest are past the handful always kept.
+    // Forty notes, with the "always kept" floor set low, so the oldest are
+    // past it — the real floor is a page of music and playing that much in a
+    // test would say nothing the ten here do not.
     const script: (readonly [MidiEvent, number])[] = [];
     for (let i = 0; i < 40; i++) {
       script.push([on(40 + i), i * 100], [off(40 + i), i * 100 + 50]);
     }
     script.push([on(88), 3900]); // still down at the end
     script.push([on(89), 12_000], [off(89), 12_100]);
-    const state = play(script, { keepMs: 5000 });
+    const state = play(script, { keepMs: 5000, alwaysKeep: 10 });
     const kept = state.notes.map((n) => n.midi);
     assert.ok(!kept.includes(40), 'the note from twelve seconds ago is gone');
     assert.ok(kept.includes(88), 'the one still held is not');

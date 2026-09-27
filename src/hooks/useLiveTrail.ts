@@ -3,8 +3,12 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import type { MidiEvent } from '../core/midi/types.ts';
 import { EMPTY_TRAIL, momentsOf, trailEvent, type LiveNote, type Moment } from '../core/midi/trail.ts';
 
-/** How many moments the running staff holds. */
-export const TRAIL_MOMENTS = 8;
+/**
+ * How many moments the written sheet can hold: four lines of four bars of
+ * four beats. The sheet shows as many of those lines as it has room for and
+ * forgets the rest, so this is the most it will ever need.
+ */
+export const TRAIL_MOMENTS = 64;
 
 export interface LiveTrail {
   /** The last few things played, oldest first. */

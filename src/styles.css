@@ -1557,17 +1557,6 @@ body {
 
 /* ---------- the live view in free play ---------- */
 
-/* The trail marches one slot to the left as each new moment arrives, rather
-   than the whole staff redrawing under your eyes. */
-.staff__canvas--slide {
-  animation: staff-slide 130ms ease-out;
-}
-
-@keyframes staff-slide {
-  from { transform: translateX(var(--slot, 40px)); }
-  to { transform: translateX(0); }
-}
-
 /* Notes rising off the keys. Sits in the keyboard's own strip so it scrolls
    with the keys on a narrow screen and lines up with them at any width. */
 .piano-roll {
@@ -1584,12 +1573,6 @@ body {
 @media (max-height: 560px) {
   .piano-roll {
     height: 56px;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .staff__canvas--slide {
-    animation: none;
   }
 }
 
@@ -1656,4 +1639,34 @@ body {
   fill: rgba(255, 253, 247, 0.92);
   stroke: rgba(47, 109, 246, 0.35);
   stroke-width: 0.4px;
+}
+
+/* The written sheet in free play. Given a height rather than taking one from
+   its contents, because the sheet decides how many lines to write from the
+   room it is given: a tall window gets four, a phone one or two. */
+.staff--live {
+  height: clamp(190px, 42vh, 620px);
+  /* Never taller than the region it sits in. Without this the sheet asks
+     for its share of the window, the region it is in is smaller than that,
+     and the last system is left hanging below the fold. */
+  max-height: 100%;
+}
+
+.staff--live .staff__canvas {
+  height: 100%;
+}
+
+/* The sheet decides its own size and scales itself to the room it has, so
+   the svg must fill the box exactly. Left to the shared rule above it would
+   take its height from its aspect ratio, overflow the panel, and have its
+   bass staff cut off by the edge. */
+.staff--live .staff__canvas svg {
+  width: 100%;
+  height: 100%;
+}
+
+@media (max-height: 620px) {
+  .staff--live {
+    height: clamp(170px, 34vh, 320px);
+  }
 }
