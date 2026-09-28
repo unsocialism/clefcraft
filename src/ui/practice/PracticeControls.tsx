@@ -273,7 +273,7 @@ export function PracticeControls({
                       checked={loop.countIn}
                       onChange={(event) => changeLoop({ countIn: event.target.checked })}
                     />
-                    <span>Count me in each time</span>
+                    <span>Count me in to start</span>
                   </label>
                   <label
                     className="toolbar__checkbox"

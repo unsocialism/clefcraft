@@ -394,7 +394,8 @@ make it followable:
 - **A count-in.** One bar of the piece's own meter before the music moves,
   counted in big figures over the page, so you come in with it rather than
   chasing it from a standing start. It is given every time you press Play,
-  including after a pause, but not when you only move the tempo slider. The
+  including after a pause, but not when you only move the tempo slider, and
+  not between the passes of a repeated section — see below. The
   sweeping line does not wait through it: it runs up to the first note and
   arrives exactly on the downbeat, so the count is something you see as well
   as read. Where there is music to the left of the cursor on the same line it
@@ -470,9 +471,15 @@ score the bars are tinted on the page so the section is visible with the
 controls hidden.
 
 - **Wait for me** turns round when you play past the last note of the section.
-- **Play along** turns round when the clock reaches the end of it, with a
-  count-in bar each time if you want one — the tick is remembered between
-  sessions.
+- **Play along** turns round the instant the clock reaches the end of it.
+  Nothing in between: no count-in, and not even the fraction of a beat the
+  frame overshot the end by, which is handed on to the next pass so that its
+  first note falls exactly where the note after the last would have. A
+  section practised this way is a loop you can play against — the price is
+  that you have to get your hands back to the start in the time the music
+  gives you, which is the point. **Count me in to start** gives you the bar
+  of counting when you press Play, and only then; the tick is remembered
+  between sessions.
 - **It counts the passes**, and how many of them were clean. A pass is clean
   when you played every note of the section and none of them wrong. Both halves
   matter: without the first, a section left running while you make tea would
@@ -483,6 +490,8 @@ controls hidden.
   It is capped at the top of the tempo slider rather than at the piece's own
   written tempo: capping it there makes the setting do nothing at all when you
   are already at that tempo, which reads as broken rather than as considerate.
+  The new tempo is picked up by the clock on its next frame, from where the
+  music has got to, so the section does not stop to change gear.
 
 Moving the cursor — by looping, by the measure box, by Restart — starts the
 engine's counters again, so "clean" and "wrong" under the progress bar are
@@ -642,6 +651,15 @@ scan was made costs time and adds nothing. Three hundred is where scans
 people actually have sit; if nothing is found there the page is drawn again
 at four hundred, for the finer scan.
 
+**The clock reads the tempo rather than remembering it.** It used to close
+over the tempo, which meant every change of tempo tore the clock down and
+built it again: the pass began afresh, the cursor snapped back to the event
+it was on, and a section that sped itself up after a clean pass paused to do
+it. The tick now reads the tempo each frame and, when it has changed, rebases
+on to it where the music actually is — so the slider is heard as a change of
+speed rather than as a jump, and a section going round can change gear
+without stopping.
+
 **A staff never has a key of its own.** Both staves of a grand staff carry
 the same key signature — that is not a convention an engraver may depart
 from — so a staff that reads no sharps and no flats while the staff beside
@@ -742,7 +760,10 @@ before when resuming mid-line), and the hide-the-controls
 gestures at phone size, repeating a section (a pass counted in each mode, a
 pass with a wrong note not counted clean, a pass nobody played not counted
 clean either, the tempo climbing 60-65-70-75 on clean passes played to the
-guides, and the same on a PDF score), and recording free play end to end — played in,
+guides, and the same on a PDF score; and the loop coming round with no break
+in it — one bar of counting at the start and none after, every pass lasting
+one bar to within a frame at 100bpm, and still within a frame of the bar
+while the tempo climbed 60-65-70-75-80-85 underneath it), and recording free play end to end — played in,
 written out, saved, reopened from the library and read back as a score, and
 the live view — the trail marching, the roll animating only while something
 is moving, each note drawn over its own key to the pixel at both desktop and

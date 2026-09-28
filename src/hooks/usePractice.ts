@@ -196,6 +196,11 @@ export function usePractice(): PracticeSession {
   optionsRef.current = { mode, requireClean, chordWindowMs, hands };
   const stateRef = useRef(state);
   stateRef.current = state;
+  // The clock reads the tempo every frame rather than closing over it, so
+  // that changing it — by the slider or by a section speeding itself up —
+  // carries on from where the music is instead of starting the pass again.
+  const tempoRef = useRef(tempoBpm);
+  tempoRef.current = tempoBpm;
 
   // The looped section as events and time. Recomputed when the section or
   // the score changes, and read through a ref by the clock, which owns the
@@ -243,13 +248,10 @@ export function usePractice(): PracticeSession {
       passes: previous.passes + 1,
       clean: previous.clean + (clean ? 1 : 0),
     }));
-    if (clean && settings?.speedUp) {
-      // The tempo change restarts the clock below, which reads this rather
-      // than the local run of the pass — so the count-in has to be asked
-      // for again here or the new pass would begin without one.
-      countInRef.current = settings.countIn;
-      setTempoBpm((bpm) => stepUpTempo(bpm, FASTEST_BUILD_UP));
-    }
+    // A faster tempo is picked up by the clock on its next frame, from where
+    // the music has got to — it does not restart the pass, and it does not
+    // ask to be counted in again.
+    if (clean && settings?.speedUp) setTempoBpm((bpm) => stepUpTempo(bpm, FASTEST_BUILD_UP));
     setState(seekToIndex(scoreRef.current, range.firstIndex, optionsRef.current.hands));
   }, []);
 
@@ -361,7 +363,11 @@ export function usePractice(): PracticeSession {
     if (range && (here.finished || here.index < range.firstIndex || here.index > range.lastIndex)) {
       setState(seekToIndex(scoreRef.current, range.firstIndex, optionsRef.current.hands));
     }
-    countInRef.current = true;
+    // A bar of counting before the music moves, and only here: a section set
+    // to repeat goes round without a break, so this is the one moment the
+    // setting has anything to say. Without a section there is nothing to
+    // repeat and a count-in is always given.
+    countInRef.current = loopRef.current ? loopRef.current.countIn : true;
     setRunning(true);
   }, []);
   const pause = useCallback(() => setRunning(false), []);
@@ -375,7 +381,8 @@ export function usePractice(): PracticeSession {
     }
     if (score.events.length === 0) return;
 
-    const quartersPerMs = tempoBpm / 60 / 1000;
+    let bpm = tempoRef.current;
+    let quartersPerMs = bpm / 60 / 1000;
     const startEvent = currentEvent(score, state);
     const oneBar = countInQuartersFor(meter.beats, meter.beatType);
     const beatQuarters = beatQuartersFor(meter.beatType);
@@ -399,7 +406,24 @@ export function usePractice(): PracticeSession {
     });
 
     const tick = () => {
-      const elapsedQuarters = (performance.now() - startedAt) * quartersPerMs;
+      const now = performance.now();
+      if (tempoRef.current !== bpm) {
+        // Rebase on to the new tempo where the music actually is, so the
+        // change is heard as a change of speed rather than as a jump.
+        const soFar = readClock({
+          elapsedQuarters: (now - startedAt) * quartersPerMs,
+          startQuarters,
+          countInQuarters,
+          beatQuarters,
+          beatsPerBar: meter.beats,
+        });
+        startQuarters = soFar.quarters;
+        countInQuarters = soFar.countingIn ? countInQuarters - (now - startedAt) * quartersPerMs : 0;
+        startedAt = now;
+        bpm = tempoRef.current;
+        quartersPerMs = bpm / 60 / 1000;
+      }
+      const elapsedQuarters = (now - startedAt) * quartersPerMs;
       const reading = readClock({
         elapsedQuarters,
         startQuarters,
@@ -411,13 +435,21 @@ export function usePractice(): PracticeSession {
       if (!reading.countingIn) {
         const range = rangeRef.current;
         if (range && reading.quarters >= range.endQuarters - 1e-9) {
-          // The end of the section: round again from the top, counted in or
-          // not as asked. Done here rather than by restarting the effect, so
-          // the turn happens on the beat it is due rather than a render later.
+          /*
+           * The end of the section: straight round again from the top.
+           *
+           * Nothing at all in between — no count-in, and not even the
+           * fraction of a beat this frame overshot the end by, which is
+           * handed on to the new pass so that the first note of one falls
+           * exactly where the note after the last would have. A section
+           * practised this way is a loop you can play against; a pause each
+           * time round is a pause you have to learn to play through.
+           */
+          const overshoot = reading.quarters - range.endQuarters;
           turnAround();
           startQuarters = range.startQuarters;
-          countInQuarters = loopRef.current?.countIn ? oneBar : 0;
-          startedAt = performance.now();
+          countInQuarters = 0;
+          startedAt = now - overshoot / quartersPerMs;
           frame = requestAnimationFrame(tick);
           return;
         }
@@ -440,7 +472,9 @@ export function usePractice(): PracticeSession {
     // `state` is intentionally not a dependency: the clock reads its start
     // point once and then owns the cursor until paused.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [running, mode, tempoBpm, score, meter, turnAround]);
+    // `tempoBpm` is deliberately not a dependency either: the tick reads it
+    // through its ref, so a change of speed does not restart the pass.
+  }, [running, mode, score, meter, turnAround]);
 
   // Wait mode has no clock to notice the end of a section, so the cursor is
   // watched instead: playing past the last note of the loop turns it round.
