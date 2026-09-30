@@ -30,6 +30,11 @@ export interface MappedBar {
   /** Top of the treble staff and bottom of the bass staff on this line. */
   readonly top: number;
   readonly bottom: number;
+  /**
+   * Each staff's own top and bottom line, for anything that has to sit on
+   * the staff rather than across the system — the dots of a repeat sign.
+   */
+  readonly staves?: readonly { readonly top: number; readonly bottom: number }[];
   /** Sorted by time, first note to closing barline. */
   readonly anchors: readonly Anchor[];
 }

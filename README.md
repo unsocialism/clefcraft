@@ -466,9 +466,20 @@ mode, without you reaching for the mouse between attempts. Bar numbers rather
 than clicks on the page, because bars are how you would say it to a teacher —
 "nine to sixteen" — and they mean the same whether the music came from a MIDI
 file, a MusicXML file or a PDF. Numbers the wrong way round mean the same
-section, numbers past the end are pulled back to it, and on an engraved MIDI
-score the bars are tinted on the page so the section is visible with the
-controls hidden.
+section, and numbers past the end are pulled back to it.
+
+**The section is marked on the page the way a printed score marks one**: a
+heavy barline with two dots at each end of it — ‖: to open and :‖ to close —
+with a faint wash over the bars between. Repeat signs rather than a
+highlighted block, because they are the notation every musician already reads
+as "play this again", and because a block's edge could be anywhere in the bar
+while a repeat sign says exactly where the section starts and stops. A
+section that runs over a line break opens on one line and closes on another,
+with the bars between washed and unsigned, as a printed one does. It is drawn
+on an engraved MIDI score and on a PDF — including a scan, where the bars are
+found from the barlines the reader picked up, so the bar marked is the bar the
+practice engine means. A MusicXML score is drawn by OpenSheetMusicDisplay and
+gets no marking; the bar numbers still do their work there.
 
 - **Wait for me** turns round when you play past the last note of the section.
 - **Play along** turns round the instant the clock reaches the end of it.
@@ -651,6 +662,13 @@ scan was made costs time and adds nothing. Three hundred is where scans
 people actually have sit; if nothing is found there the page is drawn again
 at four hundred, for the finer scan.
 
+**A bar on a scan is the space between two barlines it found.** Nothing else
+had to be worked out to mark a section on a PDF: the reader already records
+every barline it saw and how many bars came before each system, because that
+is how it numbers a notehead's bar in the first place. Reading the marking off
+the same two numbers is what makes it trustworthy — the bar with a repeat sign
+round it is the bar the engine will loop, or neither is.
+
 **The clock reads the tempo rather than remembering it.** It used to close
 over the tempo, which meant every change of tempo tore the clock down and
 built it again: the pass began afresh, the cursor snapped back to the event
@@ -716,7 +734,7 @@ would need a native CoreMIDI bridge behind the same interface.
 
 ## What has and has not been tested
 
-**Verified:** 482 unit tests — among them pitch spelling across all 15 keys
+**Verified:** 500 unit tests — among them pitch spelling across all 15 keys
 and all 88 notes, MIDI parsing, the sustain pedal, the practice state
 machine and its chord window, PDF reading against real Sibelius and
 MuseScore exports, corrections, the device library, the training
@@ -741,7 +759,16 @@ cutting the symbols, keeping only shapes of a notehead's size, finding
 blobs and enclosed holes, stems and column slices, reading each of the
 fifteen key signatures by position and refusing a stray mark, telling the
 clefs apart, and reading a whole drawn page back as the pitches it was
-drawn with), the free-play sheet (each press taking the next slot, a
+drawn with), marking a repeated section (the bars a section covers, the two it opens and
+closes in, the numbers given the wrong way round, a section of one bar signed
+at both ends, a section running over a line break opening on one line and
+closing on the next, the two lines and the dots of a repeat sign with the
+heavy line on the outside either way round and the dots inside the section,
+and the dots sitting in the spaces either side of each middle line), reading
+the bars of a PDF page off its barlines (one fewer bar than barlines, numbered
+on from the bars before the system, each between its own two barlines, read
+off the top staff of a grand staff rather than both), the free-play sheet
+(each press taking the next slot, a
 chord growing in the slot it already has, a note never moving once written,
 the oldest forgotten when the page is full, a line turning whole, a cleared
 trail starting a fresh sheet, and a page laid out into fewer lines when there
@@ -763,7 +790,11 @@ clean either, the tempo climbing 60-65-70-75 on clean passes played to the
 guides, and the same on a PDF score; and the loop coming round with no break
 in it — one bar of counting at the start and none after, every pass lasting
 one bar to within a frame at 100bpm, and still within a frame of the bar
-while the tempo climbed 60-65-70-75-80-85 underneath it), and recording free play end to end — played in,
+while the tempo climbed 60-65-70-75-80-85 underneath it; and the section
+marked on the page — repeat signs and wash appearing on a MIDI score and on
+the scanned PDF, following the bar numbers as they are changed, signed at both
+ends of a one-bar section, opening on one line and closing on another when the
+section runs over the break, and gone when the section is turned off), and recording free play end to end — played in,
 written out, saved, reopened from the library and read back as a score, and
 the live view — the trail marching, the roll animating only while something
 is moving, each note drawn over its own key to the pixel at both desktop and

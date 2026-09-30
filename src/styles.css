@@ -1670,3 +1670,14 @@ body {
     height: clamp(170px, 34vh, 320px);
   }
 }
+
+/* The section set to repeat, marked on a PDF the way a printed score marks
+   one: a wash over the bars and a repeat sign at each end. The wash is faint
+   because it lies over somebody else's engraving; the signs are not. */
+.pdf-loop__bar {
+  fill: rgb(47 109 246 / 9%);
+}
+
+.pdf-loop__sign {
+  fill: rgb(37 88 214 / 85%);
+}

@@ -16,6 +16,8 @@ import {
   type PdfReadResult,
 } from '../../core/pdf/pdfNotes.ts';
 import { keySignatureByFifths } from '../../core/music/keySignature.ts';
+import { loopMarks, repeatShapes } from '../score/loopMarks.ts';
+import { barsOfPage } from './loopBars.ts';
 import { rasterFromPixels } from '../../core/pdf/raster.ts';
 import { keepInView } from '../keepInView.ts';
 
@@ -112,6 +114,8 @@ export interface PdfViewProps {
     ys: readonly number[];
     staves?: readonly number[];
   }[];
+  /** Bars set to repeat, marked on the page with repeat signs. */
+  readonly loop?: { readonly fromMeasure: number; readonly toMeasure: number } | null;
   onRead(result: PdfReadResult): void;
   onError(message: string): void;
   /**
@@ -164,6 +168,7 @@ export function PdfView({
   zoom,
   showOverlay,
   showPitches,
+  loop = null,
   highlight,
   onRead,
   onError,
@@ -323,6 +328,29 @@ export function PdfView({
     return map;
   }, [shown]);
 
+  /**
+   * The section set to repeat, page by page, in PDF coordinates.
+   *
+   * Worked out once from the reading rather than per frame: the bars do not
+   * move, and a section is changed by typing a number, not by playing.
+   */
+  const loopByPage = useMemo(() => {
+    const map = new Map<number, ReturnType<typeof loopMarks> & { spacing: number }>();
+    if (!loop) return map;
+    for (const layout of layouts) {
+      const bars = barsOfPage(layout);
+      const marks = loopMarks(
+        bars.map((bar) => ({ measure: bar.measure, left: bar.left, right: bar.right, staves: bar.staves })),
+        loop.fromMeasure,
+        loop.toMeasure,
+      );
+      if (marks.bars.length > 0) {
+        map.set(layout.page, { ...marks, spacing: bars[0]?.spacing ?? 5 });
+      }
+    }
+    return map;
+  }, [layouts, loop]);
+
   const highlightByPage = useMemo(() => {
     const map = new Map<
       number,
@@ -424,6 +452,72 @@ export function PdfView({
                   onAddAt?.(box.pageNumber, px, py);
                 }}
               >
+                {(() => {
+                  const marks = loopByPage.get(box.pageNumber);
+                  if (!marks) return null;
+                  // Screen coordinates: the page's Y runs the other way, so
+                  // a staff's top line becomes the smaller number here.
+                  const band = (staves: readonly { top: number; bottom: number }[]) =>
+                    staves.map((staff) => ({
+                      top: box.toOverlay(0, staff.top)[1],
+                      bottom: box.toOverlay(0, staff.bottom)[1],
+                    }));
+                  const signs = ([
+                    [marks.opensIn, 'opens'],
+                    [marks.closesIn, 'closes'],
+                  ] as const)
+                    .flatMap(([bar, facing]) =>
+                      bar
+                        ? repeatShapes(
+                            box.toOverlay(facing === 'opens' ? bar.left : bar.right, 0)[0],
+                            band(bar.staves),
+                            facing,
+                            marks.spacing,
+                          )
+                        : [],
+                    );
+                  return (
+                    <g className="pdf-loop">
+                      {marks.bars.map((bar, index) => {
+                        const bands = band(bar.staves);
+                        const top = Math.min(...bands.map((s) => s.top)) - marks.spacing * 2;
+                        const bottom = Math.max(...bands.map((s) => s.bottom)) + marks.spacing * 2;
+                        const left = box.toOverlay(bar.left, 0)[0];
+                        const right = box.toOverlay(bar.right, 0)[0];
+                        return (
+                          <rect
+                            key={`loop-${index}`}
+                            className="pdf-loop__bar"
+                            x={left}
+                            y={top}
+                            width={Math.max(1, right - left)}
+                            height={Math.max(1, bottom - top)}
+                          />
+                        );
+                      })}
+                      {signs.map((shape, index) =>
+                        shape.kind === 'dot' ? (
+                          <circle
+                            key={`sign-${index}`}
+                            className="pdf-loop__sign"
+                            cx={shape.x}
+                            cy={shape.y}
+                            r={shape.r}
+                          />
+                        ) : (
+                          <rect
+                            key={`sign-${index}`}
+                            className="pdf-loop__sign"
+                            x={shape.x}
+                            y={shape.y}
+                            width={shape.width}
+                            height={shape.height}
+                          />
+                        ),
+                      )}
+                    </g>
+                  );
+                })()}
                 {(showOverlay || editing) &&
                   pageNotes.map((note) => {
                     const [x, y] = box.toOverlay(note.centerX, note.y);

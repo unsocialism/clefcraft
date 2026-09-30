@@ -24,6 +24,7 @@ import {
   type PlayheadSpot,
   type TimeMap,
 } from './playhead.ts';
+import { loopMarks, repeatShapes, type BarBox } from './loopMarks.ts';
 
 /* Layout in VexFlow's own units; the whole sheet is scaled to the width it
  * is given, the same way the training sheet is. */
@@ -52,9 +53,11 @@ const NOW_BG_RIGHT = 'rgba(47, 109, 246, 0.13)';
 const NOW_BG_LEFT = 'rgba(240, 140, 0, 0.16)';
 const NOW_BG_BOTH = 'rgba(92, 104, 128, 0.13)';
 const PLAYHEAD = 'rgba(124, 58, 237, 0.6)';
-/** The section set to repeat, tinted behind the music. */
-const LOOP_TINT = 'rgba(47, 109, 246, 0.07)';
-const LOOP_EDGE = 'rgba(47, 109, 246, 0.45)';
+/** The section set to repeat: washed behind the music, signed over it. */
+const LOOP_TINT = 'rgba(47, 109, 246, 0.09)';
+const LOOP_EDGE = 'rgba(37, 88, 214, 0.85)';
+/** One space of a staff, in VexFlow's own units. */
+const STAFF_SPACE = 10;
 const PLAYHEAD_WIDTH = 3;
 /** Room above the treble staff and below the bass staff for the line. */
 const PLAYHEAD_OVERHANG = 14;
@@ -220,6 +223,7 @@ function draw(
     endQuarters: number;
     top: number;
     bottom: number;
+    staves: { top: number; bottom: number }[];
     leftX: number;
     barlineX: number;
     points: Anchor[];
@@ -343,6 +347,10 @@ function draw(
         endQuarters: barStart + barLength,
         top: treble.getYForLine(0) - PLAYHEAD_OVERHANG,
         bottom: bass.getYForLine(4) + PLAYHEAD_OVERHANG,
+        staves: [
+          { top: treble.getYForLine(0), bottom: treble.getYForLine(4) },
+          { top: bass.getYForLine(0), bottom: bass.getYForLine(4) },
+        ],
         barlineX: x + w,
         points,
       });
@@ -404,6 +412,7 @@ function draw(
       bottom: bar.bottom,
       leftX: bar.leftX,
       rightX: bar.barlineX,
+      staves: bar.staves,
       anchors: anchorsFrom(bar.points, {
         quarters: bar.endQuarters,
         x: handover ?? bar.barlineX,
@@ -412,6 +421,78 @@ function draw(
   });
   times.sort((a, b) => a.startQuarters - b.startQuarters);
   return { spots, times };
+}
+
+/**
+ * Mark the bars being repeated.
+ *
+ * One rectangle per bar rather than one per section: a section can run over
+ * a line break, and bars that sit next to each other touch, so the tint
+ * reads as one stretch of music either way. The ends are drawn in, so it is
+ * clear where a pass begins and ends rather than merely which bars are in
+ * it.
+ */
+function placeLoopBand(
+  host: HTMLDivElement,
+  times: TimeMap,
+  loop: { fromMeasure: number; toMeasure: number } | null | undefined,
+  spacing: number,
+): void {
+  const svg = host.querySelector('svg');
+  if (!svg) return;
+  for (const old of svg.querySelectorAll('.midi-sheet__loop')) old.remove();
+  if (!loop) return;
+
+  const boxes: BarBox[] = times.map((bar) => ({
+    measure: bar.measure,
+    left: bar.leftX,
+    right: bar.rightX,
+    staves: bar.staves ?? [{ top: bar.top, bottom: bar.bottom }],
+  }));
+  const marks = loopMarks(boxes, loop.fromMeasure, loop.toMeasure);
+  if (marks.bars.length === 0) return;
+
+  const ns = 'http://www.w3.org/2000/svg';
+  const first = svg.firstChild;
+  for (const bar of marks.bars) {
+    const tint = document.createElementNS(ns, 'rect');
+    tint.setAttribute('x', String(bar.left));
+    tint.setAttribute('y', String(Math.min(...bar.staves.map((staff) => staff.top)) - spacing));
+    tint.setAttribute('width', String(Math.max(1, bar.right - bar.left)));
+    tint.setAttribute(
+      'height',
+      String(
+        Math.max(1, Math.max(...bar.staves.map((s) => s.bottom)) - Math.min(...bar.staves.map((s) => s.top)) + spacing * 2),
+      ),
+    );
+    tint.setAttribute('fill', LOOP_TINT);
+    tint.setAttribute('class', 'midi-sheet__loop');
+    svg.insertBefore(tint, first);
+  }
+
+  // The repeat signs go on top of the music, not behind it: they are the
+  // notation, and a barline hidden behind a beam says nothing.
+  const sign = (bar: BarBox, facing: 'opens' | 'closes') => {
+    const x = facing === 'opens' ? bar.left : bar.right;
+    for (const shape of repeatShapes(x, bar.staves, facing, spacing)) {
+      const element = document.createElementNS(ns, shape.kind === 'dot' ? 'circle' : 'rect');
+      if (shape.kind === 'dot') {
+        element.setAttribute('cx', String(shape.x));
+        element.setAttribute('cy', String(shape.y));
+        element.setAttribute('r', String(shape.r));
+      } else {
+        element.setAttribute('x', String(shape.x));
+        element.setAttribute('y', String(shape.y));
+        element.setAttribute('width', String(shape.width));
+        element.setAttribute('height', String(shape.height));
+      }
+      element.setAttribute('fill', LOOP_EDGE);
+      element.setAttribute('class', 'midi-sheet__loop');
+      svg.append(element);
+    }
+  };
+  if (marks.opensIn) sign(marks.opensIn, 'opens');
+  if (marks.closesIn) sign(marks.closesIn, 'closes');
 }
 
 /**
@@ -442,64 +523,6 @@ function placeBand(host: HTMLDivElement, spot: Spot | undefined): void {
   );
   band.setAttribute('class', 'midi-sheet__now');
   if (!existing) svg.insertBefore(band, svg.firstChild);
-}
-
-/**
- * Put the sweeping line where the clock says the music is.
- *
- * Like the band, this moves an element that is already on the page rather
- * than drawing anything: it runs every frame, and re-rendering for it would
- * be sixty renders a second of a piece that has not changed.
- */
-/**
- * Mark the bars being repeated.
- *
- * One rectangle per bar rather than one per section: a section can run over
- * a line break, and bars that sit next to each other touch, so the tint
- * reads as one stretch of music either way. The ends are drawn in, so it is
- * clear where a pass begins and ends rather than merely which bars are in
- * it.
- */
-function placeLoopBand(
-  host: HTMLDivElement,
-  times: TimeMap,
-  loop: { fromMeasure: number; toMeasure: number } | null | undefined,
-): void {
-  const svg = host.querySelector('svg');
-  if (!svg) return;
-  for (const old of svg.querySelectorAll('.midi-sheet__loop')) old.remove();
-  if (!loop) return;
-
-  const low = Math.min(loop.fromMeasure, loop.toMeasure);
-  const high = Math.max(loop.fromMeasure, loop.toMeasure);
-  const inside = times.filter((bar) => bar.measure >= low && bar.measure <= high);
-  if (inside.length === 0) return;
-
-  const ns = 'http://www.w3.org/2000/svg';
-  const first = svg.firstChild;
-  for (const bar of inside) {
-    const tint = document.createElementNS(ns, 'rect');
-    tint.setAttribute('x', String(bar.leftX));
-    tint.setAttribute('y', String(bar.top));
-    tint.setAttribute('width', String(Math.max(1, bar.rightX - bar.leftX)));
-    tint.setAttribute('height', String(Math.max(1, bar.bottom - bar.top)));
-    tint.setAttribute('fill', LOOP_TINT);
-    tint.setAttribute('class', 'midi-sheet__loop');
-    svg.insertBefore(tint, first);
-  }
-  for (const [edge, bar] of [
-    [inside[0]!.leftX, inside[0]!],
-    [inside[inside.length - 1]!.rightX, inside[inside.length - 1]!],
-  ] as const) {
-    const mark = document.createElementNS(ns, 'rect');
-    mark.setAttribute('x', String(edge - 1));
-    mark.setAttribute('y', String(bar.top));
-    mark.setAttribute('width', '2');
-    mark.setAttribute('height', String(Math.max(1, bar.bottom - bar.top)));
-    mark.setAttribute('fill', LOOP_EDGE);
-    mark.setAttribute('class', 'midi-sheet__loop');
-    svg.insertBefore(mark, first);
-  }
 }
 
 /**
@@ -535,6 +558,13 @@ function playheadSpot(times: TimeMap, reading: ClockReading): PlayheadSpot | nul
   };
 }
 
+/**
+ * Put the sweeping line where the clock says the music is.
+ *
+ * Like the band, this moves an element that is already on the page rather
+ * than drawing anything: it runs every frame, and re-rendering for it would
+ * be sixty renders a second of a piece that has not changed.
+ */
 function placePlayhead(
   host: HTMLDivElement,
   times: TimeMap,
@@ -623,7 +653,7 @@ export function MidiSheet({
   useEffect(() => {
     const host = hostRef.current;
     if (!host) return;
-    placeLoopBand(host, timesRef.current, loop);
+    placeLoopBand(host, timesRef.current, loop, STAFF_SPACE);
   }, [loop, width, midiScore, quiet, error]);
 
   useEffect(() => {

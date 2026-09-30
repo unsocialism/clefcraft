@@ -977,6 +977,7 @@ export function App() {
                 showOverlay={showOverlay}
                 showPitches={showPitches}
                 highlight={pdfHighlight}
+                loop={practice.loopRange}
                 onRead={handlePdfRead}
                 onError={setLoadError}
                 notes={shownNotes}
