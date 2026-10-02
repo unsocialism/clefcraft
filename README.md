@@ -188,9 +188,9 @@ reconstruction of the original score; the pitches and their order are exact.
 
 Two views of the same playing, one answering *what* and the other *how*. The
 running staff belongs to free play; the roll is above the keys in all three
-tabs, and in Practice and Training it says whether the note was the one asked
-for. Each tab starts with a clear strip — what you played in another one is not
-what you are playing here.
+tabs, and it runs one of two ways round — backwards over what you have played,
+or forwards over what you have still to play. Each tab starts with a clear
+strip: what you played in another one is not what you are playing here.
 
 **A written sheet** (free play). What you play is written out as a page of
 music: four bars to a line, filling from the left, a new line when the last one
@@ -220,10 +220,10 @@ for a note across a phone leaves twenty pixels each, which is less than a chord
 with an accidental needs. On a screen too short for even one system it draws
 the sheet whole and scales it down rather than cutting the bass staff off.
 
-**A piano roll** (every tab). Above the keys, each note appears the moment it
-is struck, grows while you hold it, and drifts up and out — the half the staff cannot tell
-you: how long each key was down, and how evenly the notes fell. It travels at a
-set speed, 88 pixels a second, rather than holding a set number of seconds of
+**A piano roll** (free play and Training). Above the keys, each note appears
+the moment it is struck, grows while you hold it, and drifts up and out — the
+half the staff cannot tell you: how long each key was down, and how evenly the
+notes fell. It travels at a set speed, 88 pixels a second, rather than holding a set number of seconds of
 history: a second of playing then draws the same bar whatever the strip's
 height, instead of a sliver you have to squint at on a short one. It is pitched
 so that notes of the length people actually play are worth looking at — half a
@@ -242,14 +242,62 @@ nothing is sounding and nothing is still on screen it stops animating and looks
 again a few times a second, so an open tab on a phone is not sixty wasted
 frames a second.
 
-**Right and wrong, where something is judging.** In Practice and Training each
-note is coloured by what the engine made of the press: green for the note that
-was asked for, red for a wrong key, amber for the right key played too late to
-count as part of its chord. Free play judges nothing, so everything there stays
-plain blue. It is a record, not a hint — nothing is coloured until after you
-have played it, so Training's rule that the keyboard stays dark until a wrong
-key is untouched, and a run of stumbles is visible as a pattern rather than as
-a number at the end.
+**The same strip, turned round** (Practice). Practice runs it the other way:
+instead of what you have just played rising off the keys, the notes still to
+come fall towards the keys they belong to and reach them at the moment they are
+due. A strip of what you have already done is a strip you can do nothing about
+— by the time a note is on it, the chance to play it differently has gone —
+and this is the one thing a picture can tell you that the staff above cannot,
+because reading a staff is a skill and watching a bar come down is not. Free
+play has no score to look ahead in and keeps the backward strip; Training keeps
+it deliberately, because the whole exercise there is to read the notes off the
+page, and falling bars would answer the question for you.
+
+The window is **one bar of the music**, top to bottom. Measured in beats rather
+than in seconds, so it scales with the tempo: the strip always holds a bar,
+whether that bar takes two seconds or six, and the barline crossing it is a
+landmark you can feel coming. Fainter rules mark the beats between. A note is
+drawn as a bar from its onset to its release — a tie makes the bar longer
+rather than starting a new one — so a held chord is one tall block and a run of
+semiquavers is a row of chips, and a note being held has its foot on the
+keyboard and its head still in the window, which is what a held key looks like.
+Each is in the colour of the hand that plays it, the same blue and amber the
+keys light up in and the sheet is written in. While one hand is being
+practised the other hand's notes stay on the strip, drawn faintly — the same
+thing that happens to its staff on the page.
+
+**Play along has a clock, so it simply follows it** — including through the
+count-in, where the music stands still but the strip does not: the notes have
+to be on their way down before the downbeat, or the bar starts with an empty
+strip and the warning the strip exists to give arrives too late. **Wait for me
+has no clock at all.** The music is wherever the cursor is, so the strip stands
+still while you think and steps down one note each time you play one, easing
+over about an eighth of a second so that the eye reads it as the column moving
+rather than as the picture changing. The ease is given a length and finishes at
+the end of it, rather than a curve that only approaches its target: a curve
+like that spends a tenth of a second creeping the last pixel, and during that
+tenth of a second the note that is due is drawn not quite touching the
+keyboard, which is the one thing this strip must never say. A seek, or a
+repeated section coming round again, is a jump rather than a slide — sliding
+two bars of music past the keyboard in a tenth of a second is a smear, and it
+is not what happened.
+
+On a PDF the strip shows an even stream of quarter notes, because rhythm is
+never read from a PDF. That is the same thing play-along does with a PDF, so
+the strip and the playback tell the same story; it is not a guess at the
+rhythm dressed up as one.
+
+**Right and wrong, where something is judging.** On the backward strip in
+Training, each note is coloured by what the engine made of the press: green for
+the note that was asked for, red for a wrong key, amber for the right key
+played too late to count as part of its chord. Free play judges nothing, so
+everything there stays plain blue. It is a record, not a hint — nothing is
+coloured until after you have played it, so Training's rule that the keyboard
+stays dark until a wrong key is untouched, and a run of stumbles is visible as
+a pattern rather than as a number at the end. Practice's strip is looking the
+other way and says nothing about what you played; right and wrong show there on
+the keys themselves and on the sheet above, which is where you are already
+looking.
 
 The roll and the practice engine never meet: each stamps a press with its own
 reading of the clock, and the two are matched by pitch and time — the nearest
@@ -734,7 +782,7 @@ would need a native CoreMIDI bridge behind the same interface.
 
 ## What has and has not been tested
 
-**Verified:** 500 unit tests — among them pitch spelling across all 15 keys
+**Verified:** 520 unit tests — among them pitch spelling across all 15 keys
 and all 88 notes, MIDI parsing, the sustain pedal, the practice state
 machine and its chord window, PDF reading against real Sibelius and
 MuseScore exports, corrections, the device library, the training
@@ -767,8 +815,19 @@ heavy line on the outside either way round and the dots inside the section,
 and the dots sitting in the spaces either side of each middle line), reading
 the bars of a PDF page off its barlines (one fewer bar than barlines, numbered
 on from the bars before the system, each between its own two barlines, read
-off the top staff of a grand staff rather than both), the free-play sheet
-(each press taking the next slot, a
+off the top staff of a grand staff rather than both), the notes on their way down (a bar
+for every note from its onset to the next event, a tie making one long bar
+rather than several short ones, the same key struck again starting a fresh
+bar, a tie with no beginning taken as a note of its own, the hand read off
+the staff, the other hand kept but marked as not yours to play, the longest
+note reported so a search knows how far back to look, a bar of music and no
+more in the window, a note dropped once it has passed the keyboard, a note
+still being held kept, and the window found in the middle of a four-hundred
+note piece), the step the strip takes when there is no clock (starting where
+it started and arriving where it was going, finishing rather than creeping,
+most of the gap covered in the first half of it, never moving backwards or
+past the target, and a gap too wide jumped rather than slid), the free-play
+sheet (each press taking the next slot, a
 chord growing in the slot it already has, a note never moving once written,
 the oldest forgotten when the page is full, a line turning whole, a cleared
 trail starting a fresh sheet, and a page laid out into fewer lines when there
@@ -794,7 +853,14 @@ while the tempo climbed 60-65-70-75-80-85 underneath it; and the section
 marked on the page — repeat signs and wash appearing on a MIDI score and on
 the scanned PDF, following the bar numbers as they are changed, signed at both
 ends of a one-bar section, opening on one line and closing on another when the
-section runs over the break, and gone when the section is turned off), and recording free play end to end — played in,
+section runs over the break, and gone when the section is turned off; and the notes falling
+towards the keys — every one of twenty-one notes drawn touching the keyboard
+to the pixel at the moment the engine asked for it, a bar of music in the
+window on a MIDI score and on a PDF, the column stepping down over five
+frames when a note is played in wait mode, the first notes already on their
+way down during the count-in, the other hand's bars drawn faintly and only
+those when one hand is chosen, the strip never emptying through a repeated
+bar, and free play and Training keeping the backward strip), and recording free play end to end — played in,
 written out, saved, reopened from the library and read back as a score, and
 the live view — the trail marching, the roll animating only while something
 is moving, each note drawn over its own key to the pixel at both desktop and

@@ -23,6 +23,8 @@ import { scoreFromMidi, type MidiScore } from './core/score/midiScore.ts';
 import { scoreFromPdfNotes } from './core/score/pdfScore.ts';
 import { toMidiFile, toMusicXml } from './core/score/exportScore.ts';
 import { EMPTY_SCORE } from './core/score/types.ts';
+import { beatQuartersFor } from './core/score/clock.ts';
+import { EMPTY_FALLING, fallingScore } from './core/score/fallingNotes.ts';
 import type { PdfReadResult } from './core/pdf/pdfNotes.ts';
 import { usePianoInput, type EventOrigin } from './hooks/usePianoInput.ts';
 import { useImmersive } from './hooks/useImmersive.ts';
@@ -33,7 +35,7 @@ import { useTraining } from './hooks/useTraining.ts';
 import { LiveSheet } from './ui/free/LiveSheet.tsx';
 import { NoteReadout } from './ui/NoteReadout.tsx';
 import { PianoKeyboard, type KeyGuide } from './ui/PianoKeyboard.tsx';
-import { PianoRoll } from './ui/PianoRoll.tsx';
+import { PianoRoll, type FallingView, type RollPosition } from './ui/PianoRoll.tsx';
 import { Toolbar } from './ui/Toolbar.tsx';
 import { PdfView, type EditAction } from './ui/pdf/PdfView.tsx';
 import { CountIn } from './ui/practice/BeatPulse.tsx';
@@ -589,6 +591,56 @@ export function App() {
     );
   }, [inPractice, practice.ahead, inTraining, training.practice.ahead, training.practice.state.wrongHere]);
 
+  /*
+   * The notes still to play, for the strip above the keys.
+   *
+   * Practice turns the strip round: instead of what you have just played
+   * rising off the keys, what is coming falls towards them. Free play has no
+   * score to look ahead in, and training deliberately does not look — the
+   * keyboard stays quiet there so that reading the staff is the exercise.
+   */
+  const falling = useMemo(
+    () => (inPractice ? fallingScore(practice.score, practice.hands) : EMPTY_FALLING),
+    [inPractice, practice.score, practice.hands],
+  );
+
+  /**
+   * Where the strip is, read once a frame by the canvas.
+   *
+   * Play along has a clock and the strip simply follows it — including
+   * through the count-in, where the music stands still but the notes must
+   * already be on their way down, or the downbeat arrives with an empty
+   * strip. Wait mode has no clock at all: the music is wherever the cursor
+   * is, and the strip glides a step down each time you play a note.
+   */
+  const rollPosition = (): RollPosition => {
+    const clock = practice.clock.current;
+    // A beat of 0 is the clock at rest; a running one counts from 1.
+    if (practice.mode === 'tempo' && clock.beat > 0) {
+      const toGo = clock.countingIn ? clock.countInQuarters * (1 - clock.countInProgress) : 0;
+      return { quarters: clock.quarters - toGo, moving: true };
+    }
+    const next = practice.ahead[0]?.event.onsetQuarters;
+    return {
+      // Finished: hold at the last note rather than jumping back to the top.
+      quarters: next ?? practice.score.events.at(-1)?.onsetQuarters ?? 0,
+      moving: false,
+    };
+  };
+
+  const rollAhead: FallingView | undefined =
+    inPractice && falling.notes.length > 0
+      ? {
+          score: falling,
+          position: rollPosition,
+          // A bar of the music at a time: enough warning to move your hand,
+          // and the barline itself is a landmark you can feel coming.
+          leadQuarters: beatQuartersFor(practice.meter.beatType) * practice.meter.beats,
+          beatQuarters: beatQuartersFor(practice.meter.beatType),
+          beatsPerBar: practice.meter.beats,
+        }
+      : undefined;
+
   const cursorIndex = practice.score.events[practice.state.index]?.cursorIndex ?? 0;
 
   // Where on the page the notes now due were drawn.
@@ -1041,7 +1093,7 @@ export function App() {
 
       <div className="app__bottom">
         <PianoKeyboard
-          above={<PianoRoll notes={trail.notes} verdicts={verdicts} />}
+          above={<PianoRoll notes={trail.notes} verdicts={verdicts} falling={rollAhead} />}
           active={piano.notes}
           guides={guides}
           fifths={fifths}

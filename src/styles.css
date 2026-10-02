@@ -1568,6 +1568,15 @@ body {
   border-bottom: 1px solid var(--border);
 }
 
+/* Looking ahead rather than back. The keyboard edge stops being where the
+   notes came from and becomes *now* — the line they arrive on — so it is
+   drawn as a line of its own, and the wash is moved to the top, where the
+   music is coming from. */
+.piano-roll--ahead {
+  background: linear-gradient(to bottom, rgba(47, 109, 246, 0.07), transparent 42%);
+  border-bottom-color: var(--right-0-edge);
+}
+
 /* A phone in landscape has no room to spare: the roll gives most of it
    back rather than squeezing the music. */
 @media (max-height: 560px) {
